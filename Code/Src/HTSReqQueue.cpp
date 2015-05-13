@@ -1,6 +1,8 @@
 
 #include "HTSReqQueue.hpp"
 
+#include <iostream>
+
 CRequestQueue::CRequestQueue()
 {
   uiReadIndex  = 0;
@@ -30,11 +32,22 @@ LONG CRequestQueue::uiPut(TQueuedRequest* pReq)
   if(*pWriteIndex != uiIncWriteIndex)
     return HTS_NOT_OK;
 
+  /* DEBUG 
+  std::cout << "W:" << uiLWriteIndex << std::endl;
+   DEBUG */
+
   //copy the request to the queue
-  pReqQueue[uiLWriteIndex] = *pReq;
+  pReqQueue[uiLWriteIndex].tFid    = pReq->tFid;
+  pReqQueue[uiLWriteIndex].uiReqId = pReq->uiReqId;
+  pReqQueue[uiLWriteIndex].uiFlags = pReq->uiFlags;
+  pReqQueue[uiLWriteIndex].pStatus = pReq->pStatus;
 
   //set the flag
   pReqQueue[uiLWriteIndex].uiFlags |= HTS_REQ_QUEUED; 
+
+  /* DEBUG 
+  std::cout << "WD:" << std::endl;
+   DEBUG */
 
   return HTS_OK;
 }
@@ -51,15 +64,26 @@ LONG CRequestQueue::uiGet(TQueuedRequest* pReq)
   //check if the record has been completely written
   if(!(pReqQueue[uiIncReadIndex].uiFlags & HTS_REQ_QUEUED))
     return HTS_NOT_OK;
+
+  /* DEBUG 
+  std::cout << "R:" << uiIncReadIndex << std::endl;
+   DEBUG */
   
   //copy the request to the queue
-  *pReq = pReqQueue[uiIncReadIndex];
+  pReq->tFid    = pReqQueue[uiIncReadIndex].tFid;
+  pReq->uiReqId = pReqQueue[uiIncReadIndex].uiReqId;
+  pReq->uiFlags = pReqQueue[uiIncReadIndex].uiFlags;
+  pReq->pStatus = pReqQueue[uiIncReadIndex].pStatus;
 
   //set the flag to empty
   pReqQueue[uiIncReadIndex].uiFlags = 0;
 
   //increment read index
   uiReadIndex = uiIncReadIndex;
+
+  /* DEBUG 
+  std::cout << "RD:" << std::endl;
+   DEBUG */
 
   return HTS_OK;
 }

@@ -17,7 +17,8 @@ typedef struct SQueuedRequest
 } TQueuedRequest;
   
 #else
-  
+#include "HTSConsts.hpp"
+
 typedef struct SQueuedRequest
 {
   void*           pFid;

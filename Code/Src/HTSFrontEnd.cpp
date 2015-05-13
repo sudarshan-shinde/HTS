@@ -9,6 +9,21 @@ CFrontEnd::CFrontEnd()
   uiReqCount  = 0;
   pOclContext = NULL;
 
+}
+
+CFrontEnd::~CFrontEnd()
+{
+  //terminate the thread
+  //SetEvent(tCloseThreadEvent);
+  //WaitForSingleObject(tThreadHandle,INFINITE);
+
+  //close the event
+  //CloseHandle(tCloseThreadEvent);
+
+}
+
+UINT CFrontEnd::uiOpenFrontEnd()
+{
   //create a process thread for handling requests
   tThreadHandle = CreateThread(NULL,
 			       0,
@@ -21,17 +36,21 @@ CFrontEnd::CFrontEnd()
 				  TRUE,
 				  FALSE,
 				  NULL);
+
+  return HTS_OK;
 }
 
-CFrontEnd::~CFrontEnd()
+UINT CFrontEnd::uiCloseFrontEnd()
 {
   //terminate the thread
   SetEvent(tCloseThreadEvent);
+  //ResetEvent(tCloseThreadEvent);
   WaitForSingleObject(tThreadHandle,INFINITE);
 
   //close the event
   CloseHandle(tCloseThreadEvent);
 
+  return HTS_OK;
 }
 
 UINT CFrontEnd::uiBindOCLContext(TOclContext* pOclContextIn)
@@ -45,16 +64,20 @@ UINT CFrontEnd::uiBuildOCLKernels()
   //allocate the required memeory
   size_t           uiSVMSize = OCL_REQ_QUEUE_SIZE*sizeof(TQueuedRequest);
   cl_svm_mem_flags tSVMFlags = CL_MEM_READ_WRITE |
-                               CL_MEM_SVM_FINE_GRAIN_BUFFER |
-                               CL_MEM_SVM_ATOMICS;
+                               CL_MEM_SVM_FINE_GRAIN_BUFFER;
+                               //CL_MEM_SVM_ATOMICS;
   
   pOclReqQueue     = (TQueuedRequest *)clSVMAlloc(pOclContext->oclContext,
 						  tSVMFlags,
 						  uiSVMSize,
 						  0);
 
+  //pOclReqQueue = (TQueuedRequest *)malloc(uiSVMSize);
+
+
   if(pOclReqQueue == NULL)
     {
+      std::cout << "SVMAlloc failed." << std::endl;
       return HTS_NOT_OK;
     }
   
@@ -70,13 +93,47 @@ UINT CFrontEnd::uiBuildOCLKernels()
 					 sourceSize,
 					 NULL);
 
+ 
+  std::cout << "building program" << std::endl;
+
+  const char* options = "-I. -cl-std=CL2.0";
   iStatus = clBuildProgram(oclProgram,
 			   1,
 			   pOclContext->pOclDevices,
-			   NULL,
+			   options,
 			   NULL,
 			   NULL);
 				 
+  if(iStatus != CL_SUCCESS)
+    {
+      //get the build error
+      size_t uiBuildLogSize;
+      clGetProgramBuildInfo(oclProgram,
+			    pOclContext->pOclDevices[0],
+			    CL_PROGRAM_BUILD_LOG,
+			    0,
+			    NULL,
+			    &uiBuildLogSize);
+
+      char *pBuildLog = (char *)malloc(uiBuildLogSize*sizeof(char));
+
+      clGetProgramBuildInfo(oclProgram,
+			    pOclContext->pOclDevices[0],
+			    CL_PROGRAM_BUILD_LOG,
+			    uiBuildLogSize,
+			    (void *)pBuildLog,
+			    NULL);
+
+
+      std::cout << "failed to build program." << std::endl;
+      std::cout << "BUILD LOG---" << std::endl;
+      std::cout << pBuildLog << std::endl;
+      std::cout << "------------" << std::endl;
+      return HTS_NOT_OK;
+    }
+
+  std::cout << "creating kernel" << std::endl;
+
   /* create kernels */
   oclKernel = clCreateKernel(oclProgram,
 			     "HTSTopKernel",
@@ -89,9 +146,11 @@ UINT CFrontEnd::uiReleaseOCLKernels()
 {
   if(pOclReqQueue)
     clSVMFree(pOclContext->oclContext, pOclReqQueue);
-  
+
   clReleaseKernel(oclKernel);
   clReleaseProgram(oclProgram);
+
+  return HTS_OK;
 }
 
 TFid CFrontEnd::tRegister()
@@ -127,7 +186,7 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
   if(tFid->uiReqCount >= THREAD_REQUEST_BUFFER_SIZE)
     return HTS_NOT_OK;
   
-  /* DEBUG 
+  /* DEBUG
   std::cout << "searching req id..." << std::endl;
    DEBUG */
 
@@ -151,12 +210,16 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
   (tFid->pThreadRequest[uiReqId]).uiFlags |= HTS_REQ_FULL; 
   tFid->uiReqCount++;
 
+  //set the request as queued.
+  (tFid->pThreadRequest[uiReqId]).uiFlags |= HTS_REQ_QUEUED; 
+  tEvent                                   = uiReqId;
+
   //if a request slot is found, put request in the queue
   TQueuedRequest cQReq;
   cQReq.tFid    = tFid;
   cQReq.uiReqId = uiReqId;
   cQReq.uiKey   = cReq.uiKey;
-  cQReq.uiFlags = 0;
+  cQReq.uiFlags = (tFid->pThreadRequest[uiReqId]).uiFlags;
   cQReq.pStatus = NULL;
 
   if(tReqQueue.uiPut(&cQReq) != HTS_OK)
@@ -166,9 +229,6 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
 
       return HTS_NOT_OK;
     }
-
-  (tFid->pThreadRequest[uiReqId]).uiFlags |= HTS_REQ_QUEUED; 
-  tEvent                                   = uiReqId;
 
   /* DEBUG 
   std::cout << "req id:" << uiReqId << std::endl;
@@ -192,6 +252,10 @@ cl_uint CFrontEnd::uiGetStatus(TFid tFid, TEvent& tEvent, void** ppStatus)
   cl_uint  uiReqId   = (cl_uint)tEvent;
   cl_uint& uiFlags  = (tFid->pThreadRequest[uiReqId]).uiFlags;
   void*    pRStatus = (tFid->pThreadRequest[uiReqId]).pStatus;
+
+  /* EDBG */
+  //std::cout << "status:" << uiFlags << std::endl;
+  /* EDBG */
 
   *ppStatus = NULL;
   if(uiFlags & HTS_REQ_COMPLETED)
@@ -218,28 +282,31 @@ cl_uint CFrontEnd::uiGetThreadCount()
 
 DWORD CFrontEnd::dwCFrontThread()
 {
-  cl_event tEvent;
   size_t   pLocalSize[1]  = {OCL_WG_SIZE};
   size_t   pGlobalSize[1] = {OCL_WG_SIZE};
   
   DWORD    dwWaitStatus   = WaitForSingleObject(tCloseThreadEvent,0);
 
-  UINT  uiReqCount = 0;
   while(dwWaitStatus == WAIT_TIMEOUT)
     {
       //service the queued requests
       TQueuedRequest cQReq;
       BOOL           bSubmitFlag = FALSE;
-      
+      UINT           uiReqCount  = 0;      
+
+
       while(bSubmitFlag == FALSE)
 	{
 	  if(uiReqCount < OCL_REQ_QUEUE_SIZE)
 	    {
 	      if(tReqQueue.uiGet(&cQReq) == HTS_OK)
 		{
-		  pOclReqQueue[uiReqCount++] = cQReq;
-		  
-
+		  pOclReqQueue[uiReqCount].tFid    = cQReq.tFid;
+		  pOclReqQueue[uiReqCount].uiReqId = cQReq.uiReqId;
+		  pOclReqQueue[uiReqCount].uiKey   = cQReq.uiKey;
+		  pOclReqQueue[uiReqCount].uiFlags = cQReq.uiFlags;
+		  pOclReqQueue[uiReqCount].pStatus = cQReq.pStatus;
+		  uiReqCount++;
 		}
 	      else
 		{
@@ -252,42 +319,58 @@ DWORD CFrontEnd::dwCFrontThread()
 	    }
 	}
 
+      //std::cout << "submitting request:" << uiReqCount << std::endl;
+
       //submit all requests to GPU
-      pGlobalSize[0] = (size_t)(uiReqCount);
-      pLocalSize[0]  = OCL_WG_SIZE;
-      
-      clSetKernelArgSVMPointer(oclKernel,
-			       0,
-			       (void *)(&pOclReqQueue));
-      clSetKernelArg(oclKernel,
-		     1,
-		     sizeof(cl_uint),
-		     (void *)(&uiReqCount));
+      if(uiReqCount > 0)
+	{
+	  UINT uiGlobalSize = (1 + uiReqCount/OCL_WG_SIZE)*OCL_WG_SIZE;
 
-      clEnqueueNDRangeKernel(oclContext->oclCommandQueue,
-			     oclKernel,
-			     1,
-			     NULL,
-			     pGlobalSize,
-			     pLocalSize,
-			     0,
-			     NULL,
-			     &tEvent);
+	  pGlobalSize[0] = (size_t)(uiGlobalSize);
+	  pLocalSize[0]  = OCL_WG_SIZE;
       
-      clFinish(oclContext->oclCommandQueue);
-
+	  clSetKernelArgSVMPointer(oclKernel,
+	  			   0,
+	  			   (void *)(pOclReqQueue));
+	  clSetKernelArg(oclKernel,
+	  		 1,
+	  		 sizeof(cl_uint),
+	  		 (void *)(&uiReqCount));
+	  clEnqueueNDRangeKernel(pOclContext->oclCommandQueue,
+	  			 oclKernel,
+	  			 1,
+	  			 NULL,
+	  			 pGlobalSize,
+	  			 pLocalSize,
+	  			 0,
+	  			 NULL,
+	  			 NULL);
+	  
+	  clFinish(pOclContext->oclCommandQueue);
+	  //std::cout << "finished kernel." << std::endl;
+	}
+      
       //update the request status to each thread
-      for (uint i = 0; i < uiReqCount; ++i)
+      for (unsigned int i = 0; i < uiReqCount; ++i)
 	{
 	  TFid tFid       = pOclReqQueue[i].tFid;
 	  cl_uint uiReqId = pOclReqQueue[i].uiReqId;
 
-	  (tFid->pThreadRequest[uiReqId]).uiFlags = pOclReqQueue[i].uiFlags;
+	  (tFid->pThreadRequest[uiReqId]).uiFlags 
+	    = pOclReqQueue[i].uiFlags;
+
+	  /* DEBUG */
+	  std::cout << i << ":";
+	  std::cout << (long)(tFid) << ":";
+	  std::cout << uiReqId << ":";
+	  std::cout << ((tFid->pThreadRequest[uiReqId]).uiFlags) << std::endl;
+	  /* DEBUG */
+
 	  (tFid->pThreadRequest[uiReqId]).pStatus = pOclReqQueue[i].pStatus;
 
 	  tFid->uiReqCount--;	  
 	}
-      
+
       dwWaitStatus = WaitForSingleObject(tCloseThreadEvent,0);
     }
 

@@ -15,6 +15,9 @@ public:
   CFrontEnd();
   ~CFrontEnd();
 
+  UINT CFrontEnd::uiOpenFrontEnd();
+  UINT CFrontEnd::uiCloseFrontEnd();
+
   //OCL functions
   UINT          uiBindOCLContext(TOclContext* pOclContextIn);
   UINT          uiBuildOCLKernels();
