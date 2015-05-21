@@ -54,11 +54,12 @@ int main()
       void*   pStatus;
       cl_uint uiReqStatus;
 
+      /*
       std::cout << "waiting on:" << std::endl;
       std::cout << (long)(tFid) << ":";
       std::cout << tReqEvent << ":";
       std::cout << ((tFid->pThreadRequest[tReqEvent]).uiFlags) << std::endl;
-
+      */
       
       uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&pStatus);
       while (uiReqStatus == HTS_NOT_OK)

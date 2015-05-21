@@ -8,7 +8,6 @@ CFrontEnd::CFrontEnd()
   uiTidCount  = 0;
   uiReqCount  = 0;
   pOclContext = NULL;
-
 }
 
 CFrontEnd::~CFrontEnd()
@@ -19,7 +18,6 @@ CFrontEnd::~CFrontEnd()
 
   //close the event
   //CloseHandle(tCloseThreadEvent);
-
 }
 
 UINT CFrontEnd::uiOpenFrontEnd()
@@ -62,25 +60,44 @@ UINT CFrontEnd::uiBindOCLContext(TOclContext* pOclContextIn)
 UINT CFrontEnd::uiBuildOCLKernels()
 {
   //allocate the required memeory
-  size_t           uiSVMSize = OCL_REQ_QUEUE_SIZE*sizeof(TQueuedRequest);
+  size_t           uiReqQueueSize  = OCL_REQ_QUEUE_SIZE*sizeof(TQueuedRequest);
+  size_t           uiNodePoolSize  = OCL_NODE_POOL_SIZE*sizeof(TLLNode);
+  size_t           uiHashTableSize = OCL_HASH_TABLE_SIZE*sizeof(TLLNode);
+ 
+  size_t           uiSVMSize = uiReqQueueSize + 
+                               uiNodePoolSize + 
+                               uiHashTableSize;
+
   cl_svm_mem_flags tSVMFlags = CL_MEM_READ_WRITE |
                                CL_MEM_SVM_FINE_GRAIN_BUFFER;
                                //CL_MEM_SVM_ATOMICS;
   
-  pOclReqQueue     = (TQueuedRequest *)clSVMAlloc(pOclContext->oclContext,
-						  tSVMFlags,
-						  uiSVMSize,
-						  0);
-
-  //pOclReqQueue = (TQueuedRequest *)malloc(uiSVMSize);
-
-
-  if(pOclReqQueue == NULL)
+  pSVMBuf     = (void *)clSVMAlloc(pOclContext->oclContext,
+				   tSVMFlags,
+				   uiSVMSize,
+				   0);
+  if(pSVMBuf == NULL)
     {
       std::cout << "SVMAlloc failed." << std::endl;
       return HTS_NOT_OK;
     }
-  
+
+  //allocate different svm pointers
+  pOclReqQueue = (TQueuedRequest*)pSVMBuf;
+  pHashTable   = (TLLNode*)((char *)pOclReqQueue + uiReqQueueSize);
+  pNodePool    = pHashTable + OCL_HASH_TABLE_SIZE;
+
+  //initialize svm buffers
+  for(UINT i = 0; i < OCL_HASH_TABLE_SIZE; ++i)
+    {
+      pHashTable[i].uiNext = 0;
+    }
+  for(UINT i = 0; i < OCL_NODE_POOL_SIZE; ++i)
+    {
+      pNodePool[i].uiNext = i+1;
+    }
+  pNodePool[OCL_NODE_POOL_SIZE -1].uiNext = 0;
+
   //create the program
   std::string sourceStr;
   cl_uint iStatus     = (cl_int)(uiConvertToString(pProgramFile, sourceStr));
@@ -132,8 +149,6 @@ UINT CFrontEnd::uiBuildOCLKernels()
       return HTS_NOT_OK;
     }
 
-  std::cout << "creating kernel" << std::endl;
-
   /* create kernels */
   oclKernel = clCreateKernel(oclProgram,
 			     "HTSTopKernel",
@@ -145,7 +160,7 @@ UINT CFrontEnd::uiBuildOCLKernels()
 UINT CFrontEnd::uiReleaseOCLKernels()
 {
   if(pOclReqQueue)
-    clSVMFree(pOclContext->oclContext, pOclReqQueue);
+    clSVMFree(pOclContext->oclContext, pSVMBuf);
 
   clReleaseKernel(oclKernel);
   clReleaseProgram(oclProgram);
@@ -194,7 +209,7 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
   cl_uint uiReqId      = 0;
   while(!bFoundFlag)
     {
-      cl_uint& uiFlags = (tFid->pThreadRequest[uiReqId]).uiFlags;
+      cl_uint uiFlags = (tFid->pThreadRequest[uiReqId]).uiFlags;
       if(uiFlags & HTS_REQ_FULL)
 	{
 	  uiReqId++;
@@ -206,7 +221,10 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
     }
 
   //put the request in private list
-  tFid->pThreadRequest[uiReqId] = cReq;
+  tFid->pThreadRequest[uiReqId].uiKey   = cReq.uiKey;
+  tFid->pThreadRequest[uiReqId].uiFlags = cReq.uiFlags;
+  tFid->pThreadRequest[uiReqId].pStatus = cReq.pStatus;
+
   (tFid->pThreadRequest[uiReqId]).uiFlags |= HTS_REQ_FULL; 
   tFid->uiReqCount++;
 
@@ -250,8 +268,8 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
 cl_uint CFrontEnd::uiGetStatus(TFid tFid, TEvent& tEvent, void** ppStatus)
 {
   cl_uint  uiReqId   = (cl_uint)tEvent;
-  cl_uint& uiFlags  = (tFid->pThreadRequest[uiReqId]).uiFlags;
-  void*    pRStatus = (tFid->pThreadRequest[uiReqId]).pStatus;
+  cl_uint  uiFlags   = (tFid->pThreadRequest[uiReqId]).uiFlags;
+  void*    pRStatus  = (tFid->pThreadRequest[uiReqId]).pStatus;
 
   /* EDBG */
   //std::cout << "status:" << uiFlags << std::endl;
@@ -293,7 +311,6 @@ DWORD CFrontEnd::dwCFrontThread()
       TQueuedRequest cQReq;
       BOOL           bSubmitFlag = FALSE;
       UINT           uiReqCount  = 0;      
-
 
       while(bSubmitFlag == FALSE)
 	{
@@ -359,12 +376,12 @@ DWORD CFrontEnd::dwCFrontThread()
 	  (tFid->pThreadRequest[uiReqId]).uiFlags 
 	    = pOclReqQueue[i].uiFlags;
 
-	  /* DEBUG */
+	  /* DEBUG 
 	  std::cout << i << ":";
 	  std::cout << (long)(tFid) << ":";
 	  std::cout << uiReqId << ":";
 	  std::cout << ((tFid->pThreadRequest[uiReqId]).uiFlags) << std::endl;
-	  /* DEBUG */
+	   DEBUG */
 
 	  (tFid->pThreadRequest[uiReqId]).pStatus = pOclReqQueue[i].pStatus;
 

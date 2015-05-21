@@ -32,7 +32,7 @@ public:
   };
 };
 
-typedef CFidS*   TFid;
-typedef UINT     TEvent;
+typedef CFidS volatile*   TFid;
+typedef UINT              TEvent;
 
 #endif

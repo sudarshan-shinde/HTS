@@ -123,7 +123,7 @@
       <AdditionalLibraryDirectories>$(AMDAPPSDKROOT)\lib\x86_64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
-      <Command>copy ..\Code\Src\*.cl $(OutDir) /Y</Command>
+      <Command>copy ..\Code\Src\*.cl $(OutDir) /Y &amp; copy ..\Code\Inc\*.hpp $(OutDir) /Y</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

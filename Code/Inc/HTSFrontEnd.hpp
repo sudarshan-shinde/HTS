@@ -46,6 +46,9 @@ private:
 
   //svm buffer for shared request queue
   TQueuedRequest*  pOclReqQueue; 
+  TLLNode*         pNodePool;
+  TLLNode*         pHashTable;
+  void*            pSVMBuf;
 
   //ocl program and kernel
   cl_program       oclProgram;
