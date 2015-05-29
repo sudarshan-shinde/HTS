@@ -17,7 +17,7 @@
 #define  EMPTY_KEY                         (0) 
   
 #define  SET_FLAG(f,b)                     ((f) | (b))
-#define  RESET_FLAG(f,b)                   ((f) & ~(b))
+//#define  RESET_FLAG(f,b)                   ((f) & ~(b))
 #define  GET_FLAG(f,b)                     ((f)&(b))
 
 #define  GET_PTR(f)                        ((f)>> 1)
@@ -39,7 +39,7 @@ enum eReqFlags
 enum eReqType
   {
     HTS_REQ_TYPE_FIND   = 0x01,
-    HTS_REQ_TYPE_ADD    = 0x01,
-    HTS_REQ_TYPE_REMOVE = 0x01,
+    HTS_REQ_TYPE_ADD    = 0x02,
+    HTS_REQ_TYPE_REMOVE = 0x04,
   };
 #endif

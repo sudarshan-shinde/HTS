@@ -27,7 +27,7 @@ public:
   TFid          tRegister();
   UINT          uiDeRegister(TFid tFid);
   UINT          uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent);
-  UINT          uiGetStatus(TFid tFid, TEvent& tEvent, void** ppStatus);
+  UINT          uiGetStatus(TFid tFid, TEvent tEvent, cl_uint* ppStatus);
 
   //query functions
   UINT          uiGetThreadCount();
@@ -48,6 +48,7 @@ private:
   TQueuedRequest*  pOclReqQueue; 
   TLLNode*         pNodePool;
   TLLNode*         pHashTable;
+  TMiscData*       pMiscData;
   void*            pSVMBuf;
 
   //ocl program and kernel

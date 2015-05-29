@@ -9,14 +9,15 @@
 class CRequest
 {
 public:
+  cl_uint   uiType;
   cl_uint   uiKey;
   cl_uint   uiFlags;
-  void*     pStatus;
+  cl_uint   uiStatus;
 
   CRequest()
   {
-    uiKey   = uiFlags = 0;
-    pStatus = NULL;
+    uiKey    = uiFlags = 0;
+    uiStatus = 0;
   };
 };
 
@@ -29,6 +30,12 @@ public:
   CFidS()
   {
     uiReqCount = 0;
+    for(cl_uint i = 0; i < THREAD_REQUEST_BUFFER_SIZE; ++i)
+      {
+	pThreadRequest[i].uiKey    = 0;
+	pThreadRequest[i].uiFlags  = 0;
+	pThreadRequest[i].uiStatus = 0;		
+      }
   };
 };
 

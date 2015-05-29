@@ -37,10 +37,12 @@ LONG CRequestQueue::uiPut(TQueuedRequest* pReq)
    DEBUG */
 
   //copy the request to the queue
-  pReqQueue[uiLWriteIndex].tFid    = pReq->tFid;
-  pReqQueue[uiLWriteIndex].uiReqId = pReq->uiReqId;
-  pReqQueue[uiLWriteIndex].uiFlags = pReq->uiFlags;
-  pReqQueue[uiLWriteIndex].pStatus = pReq->pStatus;
+  pReqQueue[uiLWriteIndex].tFid     = pReq->tFid;
+  pReqQueue[uiLWriteIndex].uiReqId  = pReq->uiReqId;
+  pReqQueue[uiLWriteIndex].uiKey    = pReq->uiKey;
+  pReqQueue[uiLWriteIndex].uiType   = pReq->uiType;  
+  pReqQueue[uiLWriteIndex].uiFlags  = pReq->uiFlags;
+  pReqQueue[uiLWriteIndex].uiStatus = pReq->uiStatus;
 
   //set the flag
   pReqQueue[uiLWriteIndex].uiFlags |= HTS_REQ_QUEUED; 
@@ -70,10 +72,12 @@ LONG CRequestQueue::uiGet(TQueuedRequest* pReq)
    DEBUG */
   
   //copy the request to the queue
-  pReq->tFid    = pReqQueue[uiIncReadIndex].tFid;
-  pReq->uiReqId = pReqQueue[uiIncReadIndex].uiReqId;
-  pReq->uiFlags = pReqQueue[uiIncReadIndex].uiFlags;
-  pReq->pStatus = pReqQueue[uiIncReadIndex].pStatus;
+  pReq->tFid     = pReqQueue[uiIncReadIndex].tFid;
+  pReq->uiReqId  = pReqQueue[uiIncReadIndex].uiReqId;
+  pReq->uiKey    = pReqQueue[uiIncReadIndex].uiKey;
+  pReq->uiType   = pReqQueue[uiIncReadIndex].uiType;    
+  pReq->uiFlags  = pReqQueue[uiIncReadIndex].uiFlags;
+  pReq->uiStatus = pReqQueue[uiIncReadIndex].uiStatus;
 
   //set the flag to empty
   pReqQueue[uiIncReadIndex].uiFlags = 0;

@@ -14,7 +14,7 @@ typedef struct SQueuedRequest
   cl_uint         uiType; 
   cl_uint         uiKey;
   cl_uint         uiFlags;
-  void*           pStatus;
+  cl_uint         uiStatus;
 } TQueuedRequest;
 
 typedef struct sLLNode
@@ -22,7 +22,13 @@ typedef struct sLLNode
   cl_uint        pE[OCL_WG_SIZE];
   cl_uint        uiNext; 
 } TLLNode;
-  
+
+typedef struct sMiscData
+{
+  cl_uint       uiReadIndex;
+  cl_uint       uiWriteIndex;
+} TMiscData;
+
 #else
 #include "HTSConsts.hpp"
 
@@ -33,7 +39,7 @@ typedef struct SQueuedRequest
   uint            uiType;
   uint            uiKey;
   uint            uiFlags;
-  void*           pStatus;
+  uint            uiStatus;
 } TQueuedRequest;
 
 typedef struct sLLNode
@@ -41,6 +47,12 @@ typedef struct sLLNode
   uint           pE[OCL_WG_SIZE];
   uint           uiNext; 
 } TLLNode;
+
+typedef struct sMiscData
+{
+  uint       uiReadIndex;
+  uint       uiWriteIndex;
+} TMiscData;
 
 #endif
 

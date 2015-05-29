@@ -47,30 +47,54 @@ int main()
   CRequest tReq;
   TEvent   tReqEvent;
 
-  tReq.uiKey = 12;
+  tReq.uiType = HTS_REQ_TYPE_ADD; 
+  tReq.uiKey  = 12;
 
   if(tFrontEnd.uiSubmitReq(tFid, tReq, tReqEvent) == HTS_OK)
-    {
-      void*   pStatus;
-      cl_uint uiReqStatus;
+  {
+    cl_uint   uiStatus;
+    cl_uint   uiReqStatus;
 
-      /*
-      std::cout << "waiting on:" << std::endl;
-      std::cout << (long)(tFid) << ":";
-      std::cout << tReqEvent << ":";
-      std::cout << ((tFid->pThreadRequest[tReqEvent]).uiFlags) << std::endl;
-      */
-      
-      uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&pStatus);
-      while (uiReqStatus == HTS_NOT_OK)
-	{
-	  uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&pStatus);
-	}
+    //std::cout << "waiting on:" << std::endl;
+    //std::cout << (long)(tFid) << ":";
+    //std::cout << tReqEvent << ":";
+    //std::cout << ((tFid->pThreadRequest[tReqEvent]).uiFlags) << std::endl;
+    
+    uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+    while (uiReqStatus == HTS_NOT_OK)
+  	{
+  	  uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+  	}
 
-      if(uiReqStatus == HTS_REQ_COMPLETED)
-	std::cout << "request is successful." << std::endl;
-    }
+    if(uiReqStatus == HTS_REQ_COMPLETED)
+      std::cout << "request is successful: " << uiStatus << std::endl;
+  }
 
+
+  tReq.uiType  = HTS_REQ_TYPE_FIND; 
+  tReq.uiKey   = 14;
+  tReq.uiFlags = 0;
+  
+  if(tFrontEnd.uiSubmitReq(tFid, tReq, tReqEvent) == HTS_OK)
+  {
+    cl_uint   uiStatus;
+    cl_uint   uiReqStatus;
+
+    //std::cout << "waiting on:" << std::endl;
+    //std::cout << (long)(tFid) << ":";
+    //std::cout << tReqEvent << ":";
+    //std::cout << ((tFid->pThreadRequest[tReqEvent]).uiFlags) << std::endl;
+    
+    uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+    while (uiReqStatus == HTS_NOT_OK)
+  	{
+  	  uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+  	}
+
+    if(uiReqStatus == HTS_REQ_COMPLETED)
+      std::cout << "request is successful: " << uiStatus << std::endl;
+  }
+  
   tFrontEnd.uiDeRegister(tFid);
 
   //std::cout << "waiting for front end thread to finish." << std::endl;
