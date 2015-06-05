@@ -1,0 +1,58 @@
+(define-abbrev-table 'text-mode-abbrev-table '(
+    ))
+
+(define-abbrev-table 'lisp-mode-abbrev-table '(
+    ))
+
+(define-abbrev-table 'fundamental-mode-abbrev-table '(
+    ))
+
+(define-abbrev-table 'global-abbrev-table '(
+("eq'" "\\begin{equation}
+    \\label{} 
+\\end{equation}" nil 0)
+("eqa'" "\\begin{eqnarray}
+    \\label{} 
+\\end{eqnarray}" nil 0)
+("item'" "\\begin{itemize}
+    \\item 
+    \\item 
+    \\item 
+\\end{itemize}" nil 0)
+("enu'" "\\begin{enumerate}
+    \\item 
+    \\item 
+    \\item 
+\\end{enumerate}" nil 0)
+("bf'" "{\\bf }" nil 0)
+("ci'" "\\cite{}" nil 0)
+("it'" "{\\it }" nil 0)
+("bar'" "{\\bar }" nil 0)
+("cap'" "{\\cap }" nil 0)
+("ref'" "\\ref{}" nil 0)
+("be'" "\\begin{}
+\\end{}" nil 0)
+("tilde'" "{\\tilde }" nil 0)
+("mc'" "{\\mathcal }" nil 0)
+("msf'" "\\mathsf{}" nil 0)
+("mfr'" "\\mathfrak{}" nil 0)
+("frac'" "\\frac{}{}" nil 0)
+("sec'" "\\section{}" nil 0)
+("subsec'" "\\section{}" nil 0)
+("nn'" "\\nonumber" nil 0)
+(":'" "_{}^{}" nil 0)
+(",'" "_{}" nil 0)
+(";'" "^{}" nil 0)
+("sum'" "\\sum_{}^{}{}" nil 0)
+("matrix'" "\\left[
+\\begin{array}{}
+\\end{array}
+\\right]" nil 0)
+("tmplt" "\\documentclass[11pt]{} 
+\\begin{document}
+\\title{}
+\\author{}
+\\date{}
+\\maketitle
+\\end{document}" nil 0)
+))

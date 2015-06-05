@@ -10,27 +10,30 @@
 */
 uint uiAlloc(TLLNode* pNodePool, uint uiReadIndex)
 {
-  uint uiLLNode;
+  uint uiLLMNode, uiLLNode;
   bool bFoundNode = false;
 
   while(bFoundNode != true)
     {
-      uiLLNode = pNodePool[uiReadIndex].uiNext;
+      uiLLMNode = pNodePool[uiReadIndex].uiNext;
+      uiLLNode  = GET_PTR(uiLLMNode);
       if(uiLLNode != 0)
 	{
-	  uint uiLLNextNode = pNodePool[uiLLNode].uiNext;
+	  uint uiLLMNextNode = pNodePool[uiLLNode].uiNext;
 	  atomic_uint* pChgPtr =
 	    (atomic_uint *)(&(pNodePool[uiReadIndex].uiNext)); 
 	  bFoundNode = atomic_compare_exchange_strong
 	        	    (pChgPtr,
-			     &uiLLNode,
-			     uiLLNextNode);
+			     &uiLLMNode,
+			     uiLLMNextNode);
 	}
       else
 	{
 	  bFoundNode = true;
 	}
     }
+  
+  pNodePool[uiLLNode].uiNext = 0;  
   return uiLLNode;
 }
 
@@ -40,45 +43,29 @@ uint uiAlloc(TLLNode* pNodePool, uint uiReadIndex)
 ** pointed by pNodePooHead. 
 **
 */
-uint uiFree(TLLNode* pNodePool, uint* pWriteIndex, uint uiLLNode)
+uint uiFree(TLLNode* pNodePool, uint uiWriteIndex, uint uiLLNode)
 {
-  bool bFoundNode      =  false;
+  uint uiLLMLastNode, uiLLLastNode, uiLLMNode;
+  
+  bool bFoundNode                 =  false;
+  pNodePool[uiLLNode].uiNext      = 0;
   
   while(bFoundNode != true)
     {
-      uint uiWriteIndexIn  = *pWriteIndex;
-      uint uiLLNextNode    = pNodePool[uiWriteIndexIn].uiNext;
+      uiLLMLastNode    = pNodePool[uiWriteIndex].uiNext;
+      uiLLLastNode     = GET_PTR(uiLLMLastNode);
+      uiLLMNode        = SET_MPTR(uiLLNode,1);
+      
       atomic_uint* pChgPtr =
-	(atomic_uint *)(&(pNodePool[uiWriteIndexIn].uiNext));
+	(atomic_uint *)(&(pNodePool[uiWriteIndex].uiNext));
 			
-      pNodePool[uiLLNode].uiNext = uiLLNextNode;
-
       bFoundNode = atomic_compare_exchange_strong
 			(pChgPtr,
-			 &uiLLNextNode,
-			 uiLLNode);
+			 &uiLLMLastNode,
+			 uiLLMNode);
     }
 
-  bool bUpdatedIndex   = false;
-
-  while(bUpdatedIndex != true)
-    {
-      uint uiWriteIndexIn  = *pWriteIndex;    
-      uint uiLLNextNode    = pNodePool[uiWriteIndexIn].uiNext;
-      uint uiWriteIndex;
-      
-      while(uiLLNextNode != 0)
-	{
-	  uiWriteIndex = uiLLNextNode;
-	  uiLLNextNode = pNodePool[uiWriteIndex].uiNext;      
-	}
-      atomic_uint* pChgPtr = (atomic_uint *)pWriteIndex;
-
-      bUpdatedIndex = atomic_compare_exchange_strong
-	                (pChgPtr,
-			 &uiWriteIndexIn,
-			 uiWriteIndex);
-    }
+  pNodePool[uiLLLastNode].uiNext      = uiLLMNode;  
   return uiLLNode;
 }
 
@@ -100,7 +87,7 @@ uint uiHashFunction(uint uiKey)
 ** 
 **
 */
-bool bDelMarkedNodes(uint uiPPtr, TLLNode* pNodePool, uint* pWriteIndex)
+bool bDelMarkedNodes(uint uiPPtr, TLLNode* pNodePool, uint uiWriteIndex)
 {
   uint uiCMPtr, uiCPtr, uiPBit;
   uint uiNMPtr, uiNPtr, uiCBit;
@@ -136,7 +123,7 @@ bool bDelMarkedNodes(uint uiPPtr, TLLNode* pNodePool, uint* pWriteIndex)
 
 	      if(bCASStatus)
 		{
-		  uiFree(pNodePool, pWriteIndex, uiCPtr);
+		  uiFree(pNodePool, uiWriteIndex, uiCPtr);
 		}
 	    }
 	  else
@@ -163,7 +150,7 @@ bool bDelMarkedNodes(uint uiPPtr, TLLNode* pNodePool, uint* pWriteIndex)
 
 bool bFind(uint      uiKey,
 	   TLLNode*  pNodePool,
-	   uint*     pWriteIndex,
+	   uint      uiWriteIndex,
 	   uint*     pNode,
 	   uint*     pIndex)
 {
@@ -182,9 +169,9 @@ bool bFind(uint      uiKey,
   while(bNodeFound != true)
     {
       if (lid == 0)
-	{
-	  bDelMarkedNodes(uiPPtr,pNodePool,pWriteIndex);
-	}
+      {
+        bDelMarkedNodes(uiPPtr,pNodePool,uiWriteIndex);
+      }
       work_group_barrier(CLK_GLOBAL_MEM_FENCE);
 
       uiCMPtr  = pNodePool[uiPPtr].uiNext;
@@ -243,7 +230,7 @@ bool bFind(uint      uiKey,
 bool bAdd(uint      uiKey,
 	  TLLNode*  pNodePool,
 	  uint      uiReadIndex,
-	  uint*     pWriteIndex)
+	  uint      uiWriteIndex)
 {
   bool bFoundKey;
   bool bAddedKey;
@@ -252,10 +239,10 @@ bool bAdd(uint      uiKey,
   
   uint lid = get_local_id(0);
 
-  return true;
+  //return true;
   
   //find the node after with the key is supposed to go.
-  bFoundKey = bFind(uiKey, pNodePool, pWriteIndex, &uiPPtr, &uiIndex);
+  bFoundKey = bFind(uiKey, pNodePool, uiWriteIndex, &uiPPtr, &uiIndex);
   work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
 
   if(bFoundKey == true)
@@ -310,11 +297,20 @@ bool bAdd(uint      uiKey,
       else
 	{
 	  //get a node allocated
+	  uint uiNewPtr;
+	  uint uiNewMPtr;
 	  if(lid == 0)
 	    {
-	      uint uiNewPtr  = uiAlloc(pNodePool,uiReadIndex);
-	      uint uiNewMPtr = SET_PTR(uiNewPtr);
-	      
+	      uiNewPtr  = uiAlloc(pNodePool,uiReadIndex);
+	      uiNewMPtr = SET_PTR(uiNewPtr);
+	    }
+	  work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
+	  uiNewPtr  = work_group_broadcast(uiNewPtr,0);
+	  uiNewMPtr = work_group_broadcast(uiNewMPtr,0);	  
+	  pNodePool[uiNewPtr].pE[lid] = EMPTY_KEY;
+	  
+	  if(lid == 0)
+	    {
 	      pNodePool[uiNewPtr].pE[0] = uiKey;
 		
 	      atomic_uint* pChgPtr =
@@ -327,12 +323,89 @@ bool bAdd(uint      uiKey,
 	    }
 	  work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
 	  bAddedKey = work_group_broadcast(bAddedKey,0);
-
+	  //bAddedKey   = false;
+	  
 	  return bAddedKey;
 	}
     }
 
   return false;
+}
+
+/*
+** bRemove:
+** a work-group level function. searches for uiKey in the set. 
+** if uiKey is found removes it. if not found returns false.
+*/
+bool bRemove(uint      uiKey,
+	     TLLNode*  pNodePool,
+	     uint      uiReadIndex,
+	     uint      uiWriteIndex)
+{
+  //find the key
+  uint uiPPtr,uiIndex;
+  uint uiVal;
+  uint uiCMPtr,uiCPtr,uiPBit; 
+  bool bFoundKey;
+
+  uint lid = get_local_id(0);
+  
+  //find the node after with the key is supposed to go.
+  bFoundKey = bFind(uiKey, pNodePool, uiWriteIndex, &uiPPtr, &uiIndex);
+  work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
+
+  if(bFoundKey == false)
+    return false;
+
+  //put EMPTY_KEY in place of uiKey
+  uiCMPtr = pNodePool[uiPPtr].uiNext;
+  uiCPtr  = GET_PTR(uiCMPtr);
+  uiPBit  = GET_DBIT(uiCMPtr);
+  
+  if((uiCPtr != 0) && (uiPBit == 0))
+    {
+      if(lid == uiIndex -1)
+	{
+	  uiVal = pNodePool[uiCPtr].pE[lid];
+	  if(uiVal == uiKey)
+	    {
+	      bFoundKey = atomic_compare_exchange_strong
+		((atomic_uint *)(&(pNodePool[uiCPtr].pE[lid])),
+		 &uiVal,
+		 EMPTY_KEY);
+	    }
+	  else
+	    {
+	      bFoundKey = false;
+	    }
+	}
+      work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
+      bFoundKey = work_group_broadcast(bFoundKey,(uiIndex -1));
+      
+      //if all keys are EMPTY_KEYS mark the node
+      uiVal = pNodePool[uiCPtr].pE[lid];
+      uiVal = work_group_all(uiVal == EMPTY_KEY);
+      if(uiVal)
+	{
+	  if(lid == 0)
+	    {
+	      uint uiNMPtr  = pNodePool[uiCPtr].uiNext;
+	      uint uiNSMPtr = SET_DBIT(uiNMPtr);
+	      atomic_compare_exchange_strong
+		((atomic_uint *)(&(pNodePool[uiCPtr].uiNext)),
+		 &uiNMPtr,
+		 uiNSMPtr);
+	      
+	    }
+	  work_group_barrier(CLK_GLOBAL_MEM_FENCE);
+	}
+    }
+  else
+    {
+      bFoundKey = false;
+    }
+  
+  return bFoundKey;
 }
 
 __kernel void HTSTopKernel(__global void* pvOclReqQueue,
@@ -351,6 +424,8 @@ __kernel void HTSTopKernel(__global void* pvOclReqQueue,
   TLLNode*        pNodePool    = (TLLNode *)pvNodePool;
   //TLLNode*        pHashTable   = (TLLNode *)pvHashTable;  
   TMiscData*      pMiscData    = (TMiscData*)pvMiscData;
+  uint            uiReadIndex  = pMiscData->uiReadIndex;
+  uint            uiWriteIndex = pMiscData->uiWriteIndex;  
   
   uint grid = get_group_id(0);
   uint lid  = get_local_id(0);
@@ -379,20 +454,28 @@ __kernel void HTSTopKernel(__global void* pvOclReqQueue,
 
       if(uiType == HTS_REQ_TYPE_FIND)
 	{
-	  bReqStatus = false;
-	  //bReqStatus = bFind(uiKey,
-	  //		     pNodePool,
-	  //		     &(pMiscData->uiWriteIndex),
-	  //		     &uiNode,
-	  //		     &uiIndex);
+	  //bReqStatus = false;
+	  bReqStatus = bFind(uiKey,
+	  		     pNodePool,
+	  		     uiWriteIndex,
+	  		     &uiNode,
+	  		     &uiIndex);
 	}
       else if(uiType == HTS_REQ_TYPE_ADD)
 	{
-	  //bReqStatus = bAdd(uiKey,
-	  //		    pNodePool,
-	  //		    pMiscData->uiReadIndex,
-	  //		    &(pMiscData->uiWriteIndex));
-	  bReqStatus = true;
+	  //bReqStatus = true;
+	  bReqStatus = bAdd(uiKey,
+	  		    pNodePool,
+	  		    uiReadIndex,
+	  		    uiWriteIndex);
+	}
+      else if(uiType == HTS_REQ_TYPE_REMOVE)
+	{
+	  //bReqStatus = true;
+	  bReqStatus = bRemove(uiKey,
+			       pNodePool,
+			       uiReadIndex,
+			       uiWriteIndex);
 	}
       
       work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
@@ -406,84 +489,11 @@ __kernel void HTSTopKernel(__global void* pvOclReqQueue,
 	{
 	  uiFlags = SET_FLAG(uiFlags,HTS_REQ_COMPLETED);
 	  pOclReqQueue[grid].uiFlags  = uiFlags;
-	  pOclReqQueue[grid].uiStatus = uiKey;
+	  pOclReqQueue[grid].uiStatus = uiIndex;
 	}
       work_group_barrier(CLK_GLOBAL_MEM_FENCE|CLK_LOCAL_MEM_FENCE);
     }
 }
 
 
-/*
-** bRemove:
-** a work-group level function. searches for uiKey in the set. 
-** if uiKey is found removes it. if not found returns false.
-*/
-
-/***
-bool bRemove(uint      uiKey,
-	     TLLNode*  pNodePool)
-{
-  //find the key
-  uint uiPPtr,uiIndex;
-  uint uiVal;
-  uint uiCMPtr,uiCPtr,uiDBit; 
-  bool bKeyFound;
-
-  bKeyFound = bFind(uiKey,pNodePool,&uiPPtr,&uiIndex);
-
-  if(bKeyFound == true)
-    {
-      //put EMPTY_KEY in place of uiKey
-      uiCMPtr = pNodePool[uiPPtr].uiNext;
-      uiCPtr  = GET_PTR(uiCMPtr);
-      uiDBit  = GET_DBIT(uiCMPtr);
-
-      if((uiCPtr != 0) && (uiDBit == 0))
-	{
-	  if(lid == uiIndex -1)
-	    {
-	      uiVal = pNodePool[uiCPtr].pE[lid];
-	      if(uiVal == uiKey)
-		{
-		  bKeyFound = atomic_compare_exchange_strong
-		    ((atomic_int *)(&(pNodePool[uiCPtr].pE[lid])),
-		     &uiVal,
-		     EMPTY_KEY);
-		}
-	      else
-		{
-		  bKeyFound = false;
-		}
-	    }
-	  work_group_barrier(CLK_GLOBAL_MEM_FENCE);
-	  bKeyFound = work_group_broadcast(bKeyFound,(uiIndex -1));
-
-	  //if all keys are EMPTY_KEYS mark the node
-	  uiVal = pNodePool[uiCPtr].pE[lid];
-	  uiVal = work_group_all(uiVal == EMPTY_KEY);
-	  if(uiVal)
-	    {
-	      if(lid == 0)
-		{
-		  uiNMPtr  = pNodePool[uiCPtr].uiNext;
-		  uiNSMPtr = SET_DBIT(uiNMPtr);
-		  atomic_compare_exchange_strong
-		    ((atomic_int *)(&(pNodePool[uiCPtr].uiNext)),
-		     &uiNMPtr,
-		     uiNSMPtr);
-		  
-		}
-	      work_group_barrier(CLK_GLOBAL_MEM_FENCE);
-	    }
-	}
-      else
-	{
-	  bKeyFound = false;
-	}
-    }
-
-  return bKeyFound;
-}
-
-***/
 

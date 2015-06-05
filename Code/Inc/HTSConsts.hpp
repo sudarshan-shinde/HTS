@@ -22,9 +22,10 @@
 
 #define  GET_PTR(f)                        ((f)>> 1)
 #define  SET_PTR(f)                        ((f)<< 1)
-#define  GET_DBIT(f)                       ((f) & (uint)(0x01)) 
-#define  SET_DBIT(f)                       ((f) | (uint)(0x01)) 
-#define  RESET_DBIT(f)                     ((f) & (uint)(~0x01)) 
+#define  GET_DBIT(f)                       ((f) & (0x01)) 
+#define  SET_DBIT(f)                       ((f) | (0x01)) 
+#define  RESET_DBIT(f)                     ((f) & (~0x01)) 
+#define  SET_MPTR(f,b)                     (((f)<< 1) | (b))
 
 enum eReqFlags
   {

@@ -99,17 +99,22 @@ UINT CFrontEnd::uiBuildOCLKernels()
     {
       pNodePool[i].uiNext = 0;
     }
-  
-  for(UINT i = 0; i < OCL_NODE_POOL_SIZE; ++i)
+
+  pMiscData->uiReadIndex  = OCL_HASH_TABLE_SIZE;
+  pMiscData->uiWriteIndex = OCL_HASH_TABLE_SIZE + 1;
+
+  cl_uint uiStartIndex = OCL_HASH_TABLE_SIZE + 2;
+  cl_uint uiEndIndex   = OCL_HASH_TABLE_SIZE + OCL_NODE_POOL_SIZE -1;  
+
+  for(cl_uint i = uiStartIndex; i < uiEndIndex; ++i)
     {
-      UINT j = i + OCL_HASH_TABLE_SIZE;
-      
-      pNodePool[j].uiNext = j + 1;
+      cl_uint j = SET_MPTR((i+1),1);
+      pNodePool[i].uiNext = j;
     }
   
-  pNodePool[OCL_NODE_POOL_SIZE + OCL_HASH_TABLE_SIZE -1].uiNext = 0;
-  pMiscData->uiReadIndex  = OCL_HASH_TABLE_SIZE;
-  pMiscData->uiWriteIndex = OCL_HASH_TABLE_SIZE + OCL_NODE_POOL_SIZE -1;
+  pNodePool[uiEndIndex].uiNext              = 0;
+  pNodePool[pMiscData->uiReadIndex].uiNext  = SET_MPTR(uiStartIndex,1);
+  pNodePool[pMiscData->uiWriteIndex].uiNext = SET_MPTR(uiEndIndex,1);  
 
   //create the program
   std::string sourceStr;
