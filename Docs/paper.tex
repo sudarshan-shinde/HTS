@@ -1,0 +1,328 @@
+%\documentclass[9pt,twocolumn]{IEEEtran}
+%\documentclass[12pt,twoside,draft]{IEEEtran}
+%\documentclass[12pt,draft]{IEEEtran}
+%\documentclass[11pt,draft]{IEEEtran}
+%\documentclass[11pt,final]{IEEEtran}
+%\documentclass[11pt,ds,final]{my_IEEEtran}
+%\documentclass[11pt,onecolumn,draftcls]{IEEEtran}
+%\documentclass[11pt]{IEEEtran}
+\documentclass[11pt,onecolumn]{IEEEtran}
+%\documentclass[draft]{IEEEtran}
+%\documentclass[9pt,twocolumn,technote,twoside]{IEEEtran}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+%\topmargin 0.125in
+
+\usepackage{times}
+\usepackage{subfigure}
+%\usepackage{algorithmic}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
+
+%\usepackage{epsfig}
+%\usepackage{graphics,graphicx,fancyhdr,amsfonts,amsmath,color,epic}
+\usepackage[dvips]{graphics,graphicx}
+%\usepackage{graphicx,graphics}
+\DeclareGraphicsExtensions{.jpg,.pdf,.eps,.png}
+
+\newtheorem {lemma}{Lemma}
+\newtheorem {theorem}{Theorem}
+
+\begin{document}
+
+\title{An OpenCL Implementation of Wait-Free Sets}
+
+\author{Sudarshan Shinde \\
+        Bangalore, INDIA. \\
+Email:sudarshan\_shinde@iitbombay.org}
+
+\maketitle
+
+%\markboth{IEEE Transactions On Automatic Control, Vol. XX, No. Y, Month 1999}
+%{Murray and Balemi: Using the style file IEEEtran.sty}
+
+%\noindent EDICS No :DSP-BANK, DSP-MULT, DSP-TFSR.
+
+%\thispagestyle{plain}
+%\pagestyle{plain}
+
+\begin{abstract}
+
+\end{abstract}
+
+\begin{IEEEkeywords}
+wait-free programming, multithreading, gpgpu, opencl.
+\end{IEEEkeywords}
+
+\footnotetext{Copyright (c) 2010 IEEE. Personal use of this material is permitted. However, permission to use this material for any other purposes must be obtained from the IEEE by sending a request to pubs-permissions@ieee.org.}
+
+\pagebreak
+
+\section{Implementation Details}
+
+The algorithms described in the literarure do not describe memory management. In perticular, they do not take into consideration, what happens if a node is physically deleted, while another process it using that node.
+
+OpenCL 2.0 defines Shared Virtual Memory (SVM), that could be used to share data between host and the GPU device, without explicit data transfer. However OpenCL does not support dynamic data allocation on GPU side, and requires that size of SVM be pre-defined. This restricts maximum size of a set.
+
+Since an implementation needs to take care of memory management, in this implementation we allocate a node pool of size $N$ in SVM. Though this restricts set size to be less than $N$, it still highlights many implementation aspects of wait-free set implementation in heterogenous computing setting.  
+
+\section{Proof of Correctness}
+\begin{algorithm}
+  \caption{Delete all marked nodes}
+  \label{alg:deleteMarkedNode}
+  \begin{algorithmic}[5]
+    \Function{delMarkedNodes}{startRef, nodePool}
+      \State doneFlag = false;
+      \While{(!doneFlag)}    
+        \State [nextRef,startMark] := getPtr(startRef);
+        \If{(!startMark)}
+          \State [nextNextRef,nextMark] := getPtr(nextRef);
+          \If{(nextMark)}
+            \State casFlag = CAS(startRef:next,[nextRef,startMark],[nextNextRef,startMark]);
+            \If{casFlag}
+               \State freeNode(nodePool,nextRef);
+            \EndIf
+          \Else
+            \State
+            \Return true;
+          \EndIf
+        \Else{}
+          \State
+          \Return false;  
+        \EndIf
+      \EndWhile        
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{theorem}
+  If multiple threads are running algorithm \ref{alg:deleteMarkedNode}, then all of them will either return false, or return same unmarked nextRef.
+\end{theorem}
+\begin{proof}
+  Consider the portion of the algorithm inside the while loop. It could be seen that the algorithm is trying to update the value of startRef:next. Each thread reads startRef:next at line 4, and atomically updates it at line 8. If multiple threads are updating it, only one thread will succeed, and so all the threads will have same value of startRef:next.
+
+  Consider also that if some thread deletes startRef. This thread will also update startRef:next, making other threads running the algorithm return false.
+\end{proof}
+
+\begin{algorithm}
+  \caption{Check next node for key}
+  \label{alg:check}
+  \begin{algorithmic}[5]
+    \Function{checkKey}{key, prevRef\&, nodePool}
+       \State [nextRef,prevMark] := getPtr(prevRef);
+       \If {(prevMark)}
+         \State
+         \Return {\small NODE\_DELETED}.
+       \EndIf
+       \If {(nextRef = 0)}
+         \State
+         \Return {\small KEY\_NOT\_DELETED}.
+       \EndIf
+
+       \State [nnRef,nextMark] := getPtr(nextRef);
+       \If {(nextMark)}
+         \State
+         \Return {\small NODE\_NEXT}.
+       \EndIf
+         
+       \State maxVal := simdMax(nodePool,nextRef);
+         \If{maxVal $<$ key}
+            \State prevRef := nextRef;
+            \Return {\small NODE\_NEXT}.
+         \Else
+           \If{simdAny(val[lid] = key)}
+               \State
+               \Return {\small KEY\_FOUND};
+           \Else
+               \State               
+               \Return {\small KEY\_NOT\_FOUND};   
+           \EndIf   
+         \EndIf
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Find a key in the set}
+  \label{alg:find}
+  \begin{algorithmic}[5]
+    \Function{find}{key, prevRef\&, nodePool}
+       \State lid := simdGetIndex();
+       \State startRef := hashFunction(key);
+       \State prevRef  := startRef;
+       \State doneFlag := false;
+       \While{(!doneFlag)}
+          \If{(lid = 1)}
+             \State delStatus := delMarkedNode(prevRef,nodePool);
+          \EndIf
+          \State simdBarrier();
+          \State delStatus = simdBroadcast(delStatus,1);
+          \If{delStatus = true}
+             \State keyStatus := checkKey(key, prevRef, nodePool);
+             \If{(keyStatus = NODE\_DELETED)}
+                \State prevRef := startRef;
+             \ElsIf{(keyStatus = KEY\_FOUND)}
+                \State 
+                \Return true
+             \ElsIf{(keyStatus = KEY\_NOT\_FOUND)}
+                \State 
+                \Return false
+             \EndIf
+          \Else
+             \State prevRef := startRef;   
+          \EndIf
+       \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Insert a key in the set}
+  \label{alg:insert}
+  \begin{algorithmic}[5]  
+    \Function{insert}{key, nodePool}
+      \State doneFlag := false;
+      \While{(!doneFlag)}
+        \State findStatus := find(key, prevRef\&, nextRef\&, nodePool);
+        \If{(findStaus = true)}
+          \State
+          \Return false;
+        \EndIf
+        \State minIndex := getMinEmptySlot(nextRef,nodePool);
+        \If{minIndex = 0} \Comment No empty slot.
+          \State insertStatus := insertNodeAndKey(key, prevRef\&,nextRef\&,nodePool);
+        \Else
+          \State insertStatus := insertKey(key, minIndex, nextRef\&,nodePool);
+        \EndIf
+        \If{insertStatus = true}
+          \State
+          \Return true;
+        \EndIf
+      \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Find empty slot with minimum index}
+  \label{alg:minindex}
+  \begin{algorithmic}[5]  
+    \Function{getMinEmptySlot}{nextRef, nodePool}
+      \State val := nodePool[nextRef]:V[lid];
+      \State indicator := (val = EMPTY\_SLOT)?lid:0;
+      \If {(simdALL(indicator = 0))}
+        \State minIndex := 0;
+      \Else
+        \State minIndex := simdMin(indicator);
+      \EndIf
+      \Return minIndex;        
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Insert a node and a key}
+  \label{alg:insnodekey}
+  \begin{algorithmic}[5]  
+    \Function{insertNodeAndKey}{key, prevRef\&, nextRef\&, nodePool}
+      \State newNRef := Alloc(nodePool);
+      \State newNNRef := Alloc(nodePool);
+      \State newNRef:next := [newNNRef,0];
+      \If{(nodePool[nextRef]:V[lid] < key)}
+        \State nodePool[newNRef]:V[lid] := nodePool[nextRef]:V[lid];
+        \State nodePool[newNNRef]:V[lid] := EMPTY\_SLOT;
+      \Else
+        \State nodePool[newNNRef]:V[lid] := nodePool[nextRef]:V[lid];
+        \State nodePool[newNPRef]:V[lid] := EMPTY\_SLOT;
+      \EndIf
+      \State minIndex := getMinEmptySlot(newNRef,nodePool);
+      \State nodePool[newNRef]:V[minIndex] := key;
+      \State nodePool[newNNPtr]:next := [nextRef,0];
+      \State status := CAS(nodePool[prevRef]:next,[nextRef,0],newNPtr);
+      \Return status;
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Insert a key in a node}
+  \label{alg:inskey}
+  \begin{algorithmic}[5]  
+    \Function{insertKey}{key, minIndex, nextRef\&, nodePool}
+      \If{lid = 1}
+        \State status := CAS(nodePool[nextRef]:V[minIndex],EMPTY\_SLOT,key);
+      \EndIf
+      \State simdWait();
+      \State status = simdBroadcast(status, 1);
+      \Return status;
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Delete a key from the set}
+  \label{alg:delkey}
+  \begin{algorithmic}[5]  
+    \Function{remove}{key, nodePool}
+      \State doneFlag := false;
+      \While{(!doneFlag)}
+        \State findStatus := find(key, prevRef\&, nextRef\&, nodePool);
+        \If{(findStaus = false)}
+          \State
+          \Return false;
+        \EndIf
+        \State val   := nodePool[nextRef]:V[lid];
+        \If{(val = key)}
+          \State status := CAS(nodePool[nextRef]:V[lid],key,EMPTY\_SLOT);
+        \EndIf
+        \State simdWait();
+        \State status := simdBrodacast(status);
+        \If{(status = true)}
+          \State status := deleteNode(prevRef\&, nextRef\&, nodePool);
+          \Return status;
+        \Else
+          \State
+          \Return false;
+        \EndIf
+      \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Delete a node}
+  \label{alg:delnode}
+  \begin{algorithmic}[5]  
+    \Function{deleteNode}{prevRef\&, nextRef\&, nodePool}
+         \State val := nodePool[nextRef]:V[lid];
+         \State status := simdAll(val,EMPTY\_SLOT);
+         \If{(status = true)}
+           \State [nnRef,nextMark] := getPtr(nextRef);
+           \State newMark := 1;
+           \If{(lid = 1)}
+              \State status := CAS(nodePool[nextRef]:next,[nnRef,nextMark],[nnRef,newMark]);
+              \If{(status = true)}
+                \State status = delMarkedNodes(prevRef,NodePool); 
+              \EndIf
+           \EndIf
+           \State simdWait();
+           \State status = simdBroadcast(status,1);
+           \State
+           \Return status;
+         \EndIf
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+%\Bibliographystyle{ieeetr}
+%\include{references.bbl}
+
+
+%%%%%\bibliography{bib-file}  % commented if *.bbl file included, as seen below
+
+\end{document}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%  End of IEEEsample.tex  %%%%%%%%%%%%%%%%%%%%%%%%%%%
