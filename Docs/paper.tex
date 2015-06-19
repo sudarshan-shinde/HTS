@@ -72,28 +72,27 @@ Since an implementation needs to take care of memory management, in this impleme
 
 \section{Proof of Correctness}
 \begin{algorithm}
-  \caption{Deletes all marked nodes beyond {\it startRef}}
+  \caption{Deletes all marked nodes that follow a given node}
   \label{alg:deleteMarkedNode}
   
   \begin{algorithmic}[1]
     \Require
-       \Statex startRef:Reference to the node beyond which all
-               marked nodes are to be deleted. 
+        \Statex startRef:Reference to the starting node. Marked nodes
+                that follow this are to be deleted. 
     \Ensure
-       \Statex All marked nodes beyond {\it startRef} are deleted.
-       \Statex {\it nextRef} returns next unmarked node beyond {\it startRef}.  
+       \Statex All marked nodes following {\it startRef} are deleted.
        \Statex Returns {\it true} if all marked nodes are deleted,
                {\it false} if node referenced by {\it startRef} gets deleted.  
 
     \Statex   
-    \Function{delMarkedNodes}{startRef, nextRef\&}
+    \Function{delMarkedNodes}{startRef}
       \State doneFlag = false;
       \While{(!doneFlag)}    
         \State [nextRef,startMark] := getUnmarkedRef(startRef);
         \If{(!startMark)}
           \State [nextNextRef,nextMark] := getUnmarkedRef(nextRef);
           \If{(nextMark)}
-            \State status = CAS(nodePool[startRef]:next,[nextRef,startMark],[nextNextRef,startMark]);
+            \State status = CAS(startRef:next,[nextRef,startMark],[nextNextRef,startMark]);
             \If{(status = true)}
                \State freeNode(nextRef);
             \EndIf
@@ -125,30 +124,44 @@ Since an implementation needs to take care of memory management, in this impleme
 \begin{algorithm}
   \caption{Check next node for key}
   \label{alg:check}
-  \begin{algorithmic}[5]
-    \Function{checkKey}{key, prevRef\&, nodePool}
-       \State [nextRef,prevMark] := getPtr(prevRef);
+  \begin{algorithmic}[1]
+    \Require
+       \Statex {\it key} to be checked.
+       \Statex {\it prevRef}, reference to node next to which the key is to
+               be checked.
+    \Ensure
+       \Statex Nodes referenced by {\it prevRef} and {\it prevRef:next} are
+               unmarked. If they are marked, returns NODE\_DELETED and
+               NODE\_NEXT respectively.
+       \Statex If all values in {\it prevRef:next} $<$ {\it key}, moves
+               {\it prevRef} to {\it prevRef:next}.          
+       \Statex If values in {\it prevRef:next} $<$ {\it key}, checks for the key.
+               Returns KEY\_FOUND or KEY\_NOT\_FOUND respectively.
+
+    \Statex   
+    \Function{checkKey}{key, prevRef\&}
+       \State [nextRef,prevMark] := getUnmarkedPtr(prevRef);
        \If {(prevMark)}
          \State
          \Return {\small NODE\_DELETED}.
        \EndIf
        \If {(nextRef = 0)}
          \State
-         \Return {\small KEY\_NOT\_DELETED}.
+         \Return {\small KEY\_NOT\_FOUND}.
        \EndIf
 
-       \State [nnRef,nextMark] := getPtr(nextRef);
+       \State [nnRef,nextMark] := getUnmarkedPtr(nextRef);
        \If {(nextMark)}
          \State
          \Return {\small NODE\_NEXT}.
        \EndIf
          
-       \State maxVal := simdMax(nodePool,nextRef);
-         \If{maxVal $<$ key}
-            \State prevRef := nextRef;
-            \Return {\small NODE\_NEXT}.
-         \Else
-           \If{simdAny(val[lid] = key)}
+       \State maxVal := simdMAX(nextRef:V[lid]);
+       \If{maxVal $<$ key}
+           \State prevRef := nextRef;
+           \Return {\small NODE\_NEXT}.
+       \Else
+           \If{simdANY(nextRef:V[lid] = key)}
                \State
                \Return {\small KEY\_FOUND};
            \Else
@@ -163,20 +176,27 @@ Since an implementation needs to take care of memory management, in this impleme
 \begin{algorithm}
   \caption{Find a key in the set}
   \label{alg:find}
-  \begin{algorithmic}[5]
-    \Function{find}{key, prevRef\&, nodePool}
-       \State lid := simdGetIndex();
+  \begin{algorithmic}[1]
+    \Require
+       \Statex {\it key} to be searched.
+    \Ensure
+       \Statex {\it prevRef}, such that next node either has key or key could
+               be inserted to it.
+       \Statex Returns {\it true} if key is found else returns {\it false}.
+    
+    \Function{find}{key, prevRef\&}
+       \State lid := simdINDEX();
        \State startRef := hashFunction(key);
        \State prevRef  := startRef;
        \State doneFlag := false;
        \While{(!doneFlag)}
           \If{(lid = 1)}
-             \State delStatus := delMarkedNode(prevRef,nodePool);
+             \State delStatus := delMarkedNode(prevRef);
           \EndIf
-          \State simdBarrier();
-          \State delStatus = simdBroadcast(delStatus,1);
+          \State simdBARRIER();
+          \State delStatus = simdBROADCAST(delStatus,1);
           \If{delStatus = true}
-             \State keyStatus := checkKey(key, prevRef, nodePool);
+             \State keyStatus := checkKey(key, prevRef);
              \If{(keyStatus = NODE\_DELETED)}
                 \State prevRef := startRef;
              \ElsIf{(keyStatus = KEY\_FOUND)}
@@ -197,24 +217,34 @@ Since an implementation needs to take care of memory management, in this impleme
 \begin{algorithm}
   \caption{Insert a key in the set}
   \label{alg:insert}
-  \begin{algorithmic}[5]  
-    \Function{insert}{key, nodePool}
+  \begin{algorithmic}[1]
+    \Require
+       \Statex {\it key} to be searched.
+    \Ensure
+       \Statex Returns {\it false} if key is found else inserts the {\it key}.
+               
+    \Statex
+    \Function{insert}{key}
       \State doneFlag := false;
       \While{(!doneFlag)}
-        \State findStatus := find(key, prevRef\&, nextRef\&, nodePool);
+        \State findStatus := find(key, prevRef);
         \If{(findStaus = true)}
           \State
           \Return false;
         \EndIf
-        \State minIndex := getMinEmptySlot(nextRef,nodePool);
-        \If{minIndex = 0} \Comment No empty slot.
-          \State insertStatus := insertNodeAndKey(key, prevRef\&,nextRef\&,nodePool);
-        \Else
-          \State insertStatus := insertKey(key, minIndex, nextRef\&,nodePool);
-        \EndIf
-        \If{insertStatus = true}
-          \State
-          \Return true;
+        \State [nextRef, prevMark] = getUnmarkedRef(prevRef);
+        \If{(prevMark = 0)}
+          \State insertStatus = false;
+          \State minIndex := getMinEmptySlot(nextRef,nodePool);
+          \If{(minIndex = 0)} \Comment No empty slot.
+            \State insertStatus := insertNodeAndKey(key, prevRef,nextRef);
+          \ElsIf{(minIndex > 0)}
+            \State insertStatus := insertKey(key, minIndex, prevRef, nextRef);
+          \EndIf
+          \If{insertStatus = true}
+            \State
+            \Return true;
+          \EndIf
         \EndIf
       \EndWhile
     \EndFunction
@@ -224,16 +254,30 @@ Since an implementation needs to take care of memory management, in this impleme
 \begin{algorithm}
   \caption{Find empty slot with minimum index}
   \label{alg:minindex}
-  \begin{algorithmic}[5]  
-    \Function{getMinEmptySlot}{nextRef, nodePool}
-      \State val := nodePool[nextRef]:V[lid];
+  \begin{algorithmic}[1]
+    \Require
+      \Statex {\it nextRef} in which minumum index to empty slot is to be
+              found.
+    \Ensure
+      \Statex Returns {\it -1} if {\it nextRef} is deleted, {\it 0} if no
+              empty slot is found, or minimum index to empty slot.  
+    
+    \Function{getMinEmptySlot}{nextRef}
+      \State val := nextRef:V[lid];
       \State indicator := (val = EMPTY\_SLOT)?lid:0;
       \If {(simdALL(indicator = 0))}
         \State minIndex := 0;
       \Else
-        \State minIndex := simdMin(indicator);
+        \State minIndex := simdMIN(indicator);
       \EndIf
-      \Return minIndex;        
+      \State [nnRef,nextMark] := getUnmarkedPtr(nextRef);
+      \If{(nextMark = 0)}
+        \State
+        \Return minIndex;
+      \Else
+        \State
+        \Return -1;
+      \EndIf  
     \EndFunction
   \end{algorithmic}
 \end{algorithm}
@@ -241,10 +285,23 @@ Since an implementation needs to take care of memory management, in this impleme
 \begin{algorithm}
   \caption{Insert a node and a key}
   \label{alg:insnodekey}
-  \begin{algorithmic}[5]  
-    \Function{insertNodeAndKey}{key, prevRef\&, nextRef\&, nodePool}
-      \State newNRef := Alloc(nodePool);
-      \State newNNRef := Alloc(nodePool);
+  \begin{algorithmic}[1]
+    \Require
+      \Statex {\it key} to be inserted.
+      \Statex {\it prefRef} and {\it nextRef} give window in which new node
+              and key are to be inserted.
+    \Ensure
+       \Statex Returns {\it true} if successful.
+    
+    \Function{insertNodeAndKey}{key, prevRef, nextRef}
+      \If{(lid = 1)} 
+        \State newNRef := newNode();
+        \State newNNRef := newNode();
+      \EndIf
+      \State simdBARRIER();
+      \State newNRef  := simdBROADCAST(newNRef,1);
+      \State newNNRef := simdBROADCAST(newNRef,1);      
+      
       \State newNRef:next := [newNNRef,0];
       \If{(nodePool[nextRef]:V[lid] < key)}
         \State nodePool[newNRef]:V[lid] := nodePool[nextRef]:V[lid];
