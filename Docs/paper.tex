@@ -70,6 +70,115 @@ OpenCL 2.0 defines Shared Virtual Memory (SVM), that could be used to share data
 
 Since an implementation needs to take care of memory management, in this implementation we allocate a node pool of size $N$ in SVM. Though this restricts set size to be less than $N$, it still highlights many implementation aspects of wait-free set implementation in heterogenous computing setting.  
 
+\section{The Algorithm}
+The algorithm consists of a modification of the wait-free linked list to support replacing a node.
+
+A {\it packed} reference consists of an unmarked reference, a {\it mark} bit to indicate if the node is marked and an {\it retain} bit to indicate that unmarked reference could not be changed. It also has a {\it free} bit to indicate that whether the node is occupied or free. These three bits are arranged as $Bits = [fBit,rBit,mBit]$.
+
+We also have the following methods
+
+\begin{enumerate}
+    \item $[ref, bits] = unpackRef(pref)$.
+\end{enumerate} 
+
+\begin{algorithm}
+  \caption{snips next node if it is marked and could be snipped}
+  \label{alg:snip}
+  
+  \begin{algorithmic}[1]
+    \Require
+        \Statex startRef:Reference to the starting node.
+    \Ensure
+       \Statex next node will be snipped.
+    \Statex   
+    \Function{snip}{startRef}
+      \State pPRef = startRef:next;
+      \State [nRef,pBits] = unpackRef(startRef:next);
+      \If{(pBits = [0,0,0])}
+        \State [nnRef,nBits] = unpackRef(pRef:next):
+        \If{(nBits = [0,x,1])}
+          \State status = CAS(startRef:next,pPRef,[nnRef,pBits]);
+          \State
+          \Return status;
+        \Else
+          \State
+          \Return false;
+        \EndIf
+      \Else
+        \State
+        \Return false;
+      \EndIf
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{Replaces next node with a new node}
+  \label{alg:replace}
+  
+  \begin{algorithmic}[1]
+    \Require
+        \Statex startRef:Reference to the starting node.
+    \Ensure
+       \Statex next node will be replaced by new node.
+    \Statex   
+    \Function{replace}{startRef, newRef}
+      \State pPRef = startRef:next;    
+      \State [nRef,pBits] = unpackRef(startRef:next);
+      \If{([pBits] = [0,0,0])}
+        \State nPRef = nRef:next;    
+        \State [nnRef,nBits] = unpackRef(nRef:next);
+        \If{(nBits = [0,x,0])}
+          \State status = CAS(nRef:next,nPRef,[nnRef,[0,1,0]]);
+          \If{(status = false)}
+            \State
+            \Return false;
+          \EndIf  
+        \Else
+          \State
+          \Return false;
+        \EndIf
+        \State newRef:next = [nnRef,[0,0,0]];
+        \State status = CAS(startRef:next,pPRef,[newRef,pBits]);
+        \If{(status = false)}
+          \State
+          \Return false;
+        \EndIf
+      \Else
+        \State
+        \Return false;
+      \EndIf
+      \State
+      \Return true;
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{cleans all the nodes that are logically deleted and could be physically deleted}
+  \label{alg:clean}
+  \begin{algorithmic}[1]
+    \Require
+        \Statex startRef:Reference to the starting node.
+    \Ensure
+       \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{clean}{startRef, nextRef\&}
+      \State pRef  = startRef;
+      \While{(done = 0)}
+        \State nPRef = pRef:next;
+        \State [nRef,prBit,pmBit] = unpackRef(nPRef);
+        \If({prBit = 0})
+          \State status = snip(pRef);
+        \Else
+          \State   
+        \EndIf
+      \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+
 \section{Proof of Correctness}
 \begin{algorithm}
   \caption{Deletes all marked nodes that follow a given node}
