@@ -82,31 +82,37 @@ We also have the following methods
 \end{enumerate} 
 
 \begin{algorithm}
-  \caption{snips next node if it is marked and could be snipped}
+  \caption{Snips next node if it is marked and could be snipped}
   \label{alg:snip}
   
   \begin{algorithmic}[1]
-    \Require
-        \Statex startRef:Reference to the starting node.
-    \Ensure
-       \Statex next node will be snipped.
-    \Statex   
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex  next node will be snipped.
+    %\Statex   
     \Function{snip}{startRef}
       \State pPRef = startRef:next;
       \State [nRef,pBits] = unpackRef(startRef:next);
-      \If{(pBits = [0,0,0])}
-        \State [nnRef,nBits] = unpackRef(pRef:next):
+      \If{(pBits = [0,0,x])}
+        \State [nnRef,nBits] = unpackRef(nRef:next):
         \If{(nBits = [0,x,1])}
           \State status = CAS(startRef:next,pPRef,[nnRef,pBits]);
-          \State
-          \Return status;
+          \If{(status = true)}
+             \State FREE(nRef);
+             \State 
+             \Return {\it snipped};
+          \Else
+             \State
+             \Return {\it failed};
+          \EndIf
         \Else
           \State
-          \Return false;
+          \Return {\it next\_unmarked};
         \EndIf
       \Else
         \State
-        \Return false;
+        \Return {\it start\_invalid};
       \EndIf
     \EndFunction
   \end{algorithmic}
@@ -117,10 +123,10 @@ We also have the following methods
   \label{alg:replace}
   
   \begin{algorithmic}[1]
-    \Require
-        \Statex startRef:Reference to the starting node.
-    \Ensure
-       \Statex next node will be replaced by new node.
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex next node will be replaced by new node.
     \Statex   
     \Function{replace}{startRef, newRef}
       \State pPRef = startRef:next;    
@@ -132,24 +138,26 @@ We also have the following methods
           \State status = CAS(nRef:next,nPRef,[nnRef,[0,1,0]]);
           \If{(status = false)}
             \State
-            \Return false;
+            \Return {\it retain\_failed};
           \EndIf  
         \Else
           \State
-          \Return false;
+          \Return {\it invalid\_nbits};
         \EndIf
         \State newRef:next = [nnRef,[0,0,0]];
         \State status = CAS(startRef:next,pPRef,[newRef,pBits]);
-        \If{(status = false)}
+        \If{(status = true)}
+          \State FREE(nRef);
           \State
-          \Return false;
+          \Return {\it replaced}; 
+        \Else
+          \State
+          \Return {\it failed};
         \EndIf
       \Else
         \State
-        \Return false;
+        \Return {\it invalid\_pbits};
       \EndIf
-      \State
-      \Return true;
     \EndFunction
   \end{algorithmic}
 \end{algorithm}
@@ -158,20 +166,121 @@ We also have the following methods
   \caption{cleans all the nodes that are logically deleted and could be physically deleted}
   \label{alg:clean}
   \begin{algorithmic}[1]
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{clean}{startRef, nextRef\&}
+      \State pRef  = startRef;
+      \State nextRef  = {\it null};
+      \While{(true)}
+        \State status = snip(pRef);
+        \State [nRef,pBits] = unpackRef(pRef:next);
+        \If{(status = {\it next\_unmarked})}
+          \State nextRef = nRef;
+          \State
+          \Return status;
+        \ElsIf{status = {\it start\_invalid}}
+          \If{(pBits = [0,1,x])}
+            \State pRef = nRef; 
+          \Else
+            \If{(pRef = startRef)}
+              \State
+              \Return {\it start\_invalid}
+            \Else
+              \State pRef = startRef;  
+            \EndIf
+          \EndIf
+        \EndIf
+      \EndWhile
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{checks for valid window.}
+  \label{alg:window}
+  \begin{algorithmic}[1]
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{window}{key, prevRef, nextRef, index\&}
+      \State status = false;
+      \If{(prevRef != {\it Null})}
+        \State [nRef, pBits] = unpackRef(prevRef:next);
+        \If{(pBits != [0,x,0])}
+          \State 
+          \Return {\it invalid\_prev\_bits}; ; 
+        \EndIf
+        \If{(nRef != nextRef)}
+          \State 
+          \Return {\it invalid\_next\_ref}; 
+        \EndIf
+        \State pMaxVal = simdMAX(prevRef:val);  
+        \If{(key $<=$ pMaxVal)}
+          \State 
+          \Return {\it window\_not\_found};; 
+        \EndIf
+      \EndIf
+      \State [nnRef, nBits] = unpackRef(nextRef:next);
+      \If{(nBits != [0,x,0])}
+        \State 
+        \Return {\it invalid\_next\_bits}; 
+      \EndIf
+      \State pMaxVal = simdMAX(nextRef:val);  
+      \If{(key $<=$ pMaxVal)}
+        \State 
+        \Return {\it window\_not\_found};
+      \Else
+        \If{(simdANY((key = nextRef:Val), index))}
+          \State
+          \Return {\it key\_found}
+        \Else
+          \State
+          \Return {\it window\_found}
+        \EndIf
+      \EndIf
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{finds a key and returns a window to it.}
+  \label{alg:find}
+  \begin{algorithmic}[1]
     \Require
         \Statex startRef:Reference to the starting node.
     \Ensure
        \Statex cleans all the logically deleted nodes.
     \Statex   
-    \Function{clean}{startRef, nextRef\&}
-      \State pRef  = startRef;
-      \While{(done = 0)}
-        \State nPRef = pRef:next;
-        \State [nRef,prBit,pmBit] = unpackRef(nPRef);
-        \If({prBit = 0})
-          \State status = snip(pRef);
-        \Else
-          \State   
+    \Function{find}{key, prevRef\&, nextRef\&, index\&}
+      \State startRef = hash(key);
+      \State prevRef = nextRef = {\it Null};
+      \State index = 0;      
+      \While(true)
+        \State pRef = {\it Null};
+        \State nRef = startRef;
+        \State status = {\it window\_not\_found};
+        \While{(status = {\it window\_not\_found})}
+          \State status = WINDOW(key, pRef, nRef, index);
+          \If{(status = {\it window\_not\_found})}
+            \State pRef = nRef;
+            \State status2 = CLEAN(pRef,nRef);
+            \If{(status2 = {\it start\_invalid})}
+              \State status = {\it window\_not\_found}
+            \EndIf
+          \EndIf
+        \EndWhile
+        \If{(status = {\it window\_found})}
+          \State
+          \Return status;
+        \EndIf
+        \If{(status = {\it key\_found})}
+          \State
+          \Return status;
         \EndIf
       \EndWhile
     \EndFunction
@@ -180,148 +289,6 @@ We also have the following methods
 
 
 \section{Proof of Correctness}
-\begin{algorithm}
-  \caption{Deletes all marked nodes that follow a given node}
-  \label{alg:deleteMarkedNode}
-  
-  \begin{algorithmic}[1]
-    \Require
-        \Statex startRef:Reference to the starting node. Marked nodes
-                that follow this are to be deleted. 
-    \Ensure
-       \Statex All marked nodes following {\it startRef} are deleted.
-       \Statex Returns {\it true} if all marked nodes are deleted,
-               {\it false} if node referenced by {\it startRef} gets deleted.  
-
-    \Statex   
-    \Function{delMarkedNodes}{startRef}
-      \State doneFlag = false;
-      \While{(!doneFlag)}    
-        \State [nextRef,startMark] := getUnmarkedRef(startRef);
-        \If{(!startMark)}
-          \State [nextNextRef,nextMark] := getUnmarkedRef(nextRef);
-          \If{(nextMark)}
-            \State status = CAS(startRef:next,[nextRef,startMark],[nextNextRef,startMark]);
-            \If{(status = true)}
-               \State freeNode(nextRef);
-            \EndIf
-          \Else
-            \State
-            \Return true;
-          \EndIf
-        \Else{}
-          \State
-          \Return false;  
-        \EndIf
-      \EndWhile        
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
-
-\begin{theorem}
-  A process running algorithm \ref{alg:deleteMarkedNode}, then it will either return next unmarked node after {\it startRef} in {\it nextRef}, or return {\it false}.
-\end{theorem}
-\begin{IEEEproof}
-  The proof consists of the following parts.
-  \begin{enumerate}
-    \item The state of the linked list copied to internal variables {\it nextRef} and {\it nnRef} is valid as they are read simultaneously with {\it startMark} and {\it nextMark} respectively, and both these flags are checked.
-    \item If this state remains valid, then CAS operation is successful.
-    \item If this state is changed by any other process, this change is completely reflected in {\it startRef:next}.  
-\end{enumerate} 
-\end{IEEEproof}
-
-\begin{algorithm}
-  \caption{Check next node for key}
-  \label{alg:check}
-  \begin{algorithmic}[1]
-    \Require
-       \Statex {\it key} to be checked.
-       \Statex {\it prevRef}, reference to node next to which the key is to
-               be checked.
-    \Ensure
-       \Statex Nodes referenced by {\it prevRef} and {\it prevRef:next} are
-               unmarked. If they are marked, returns NODE\_DELETED and
-               NODE\_NEXT respectively.
-       \Statex If all values in {\it prevRef:next} $<$ {\it key}, moves
-               {\it prevRef} to {\it prevRef:next}.          
-       \Statex If values in {\it prevRef:next} $<$ {\it key}, checks for the key.
-               Returns KEY\_FOUND or KEY\_NOT\_FOUND respectively.
-
-    \Statex   
-    \Function{checkKey}{key, prevRef\&}
-       \State [nextRef,prevMark] := getUnmarkedPtr(prevRef);
-       \If {(prevMark)}
-         \State
-         \Return {\small NODE\_DELETED}.
-       \EndIf
-       \If {(nextRef = 0)}
-         \State
-         \Return {\small KEY\_NOT\_FOUND}.
-       \EndIf
-
-       \State [nnRef,nextMark] := getUnmarkedPtr(nextRef);
-       \If {(nextMark)}
-         \State
-         \Return {\small NODE\_NEXT}.
-       \EndIf
-         
-       \State maxVal := simdMAX(nextRef:V[lid]);
-       \If{maxVal $<$ key}
-           \State prevRef := nextRef;
-           \Return {\small NODE\_NEXT}.
-       \Else
-           \If{simdANY(nextRef:V[lid] = key)}
-               \State
-               \Return {\small KEY\_FOUND};
-           \Else
-               \State               
-               \Return {\small KEY\_NOT\_FOUND};   
-           \EndIf   
-         \EndIf
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}
-  \caption{Find a key in the set}
-  \label{alg:find}
-  \begin{algorithmic}[1]
-    \Require
-       \Statex {\it key} to be searched.
-    \Ensure
-       \Statex {\it prevRef}, such that next node either has key or key could
-               be inserted to it.
-       \Statex Returns {\it true} if key is found else returns {\it false}.
-    
-    \Function{find}{key, prevRef\&}
-       \State lid := simdINDEX();
-       \State startRef := hashFunction(key);
-       \State prevRef  := startRef;
-       \State doneFlag := false;
-       \While{(!doneFlag)}
-          \If{(lid = 1)}
-             \State delStatus := delMarkedNode(prevRef);
-          \EndIf
-          \State simdBARRIER();
-          \State delStatus = simdBROADCAST(delStatus,1);
-          \If{delStatus = true}
-             \State keyStatus := checkKey(key, prevRef);
-             \If{(keyStatus = NODE\_DELETED)}
-                \State prevRef := startRef;
-             \ElsIf{(keyStatus = KEY\_FOUND)}
-                \State 
-                \Return true
-             \ElsIf{(keyStatus = KEY\_NOT\_FOUND)}
-                \State 
-                \Return false
-             \EndIf
-          \Else
-             \State prevRef := startRef;   
-          \EndIf
-       \EndWhile
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
 
 \begin{algorithm}
   \caption{Insert a key in the set}
