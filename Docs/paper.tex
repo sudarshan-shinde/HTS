@@ -251,16 +251,16 @@ We also have the following methods
   \caption{finds a key and returns a window to it.}
   \label{alg:find}
   \begin{algorithmic}[1]
-    \Require
-        \Statex startRef:Reference to the starting node.
-    \Ensure
-       \Statex cleans all the logically deleted nodes.
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
     \Statex   
     \Function{find}{key, prevRef\&, nextRef\&, index\&}
       \State startRef = hash(key);
       \State prevRef = nextRef = {\it Null};
       \State index = 0;      
-      \While(true)
+      \While{(true)}
         \State pRef = {\it Null};
         \State nRef = startRef;
         \State status = {\it window\_not\_found};
@@ -287,153 +287,102 @@ We also have the following methods
   \end{algorithmic}
 \end{algorithm}
 
-
-\section{Proof of Correctness}
-
 \begin{algorithm}
-  \caption{Insert a key in the set}
-  \label{alg:insert}
+  \caption{clones a node and adds a key to it.}
+  \label{alg:clone}
   \begin{algorithmic}[1]
-    \Require
-       \Statex {\it key} to be searched.
-    \Ensure
-       \Statex Returns {\it false} if key is found else inserts the {\it key}.
-               
-    \Statex
-    \Function{insert}{key}
-      \State doneFlag := false;
-      \While{(!doneFlag)}
-        \State findStatus := find(key, prevRef);
-        \If{(findStaus = true)}
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{clone}{ref, key}
+      \State newRef = ALLOC();
+      \Comment{assumption is that ALLOC always returns a node}
+      \State newRef:next = ref:next;
+      \State keyIndex = simdIndex(ref:val = key);
+      \If{keyIndex = 0}
+        \State minIndex    = min(simdIndex(ref:val = {\it empty}));
+        \Comment{simdIndex returns zero if condition is not met}         
+        \If{(minIndex $\not =$ 0)}
+          \State simdCopy(ref:val, newRef:val);
+          \State newRef:val[minIndex] = key;
           \State
-          \Return false;
+          \Return newRef;
+        \Else
+          \State prevNewRef = ALLOC();
+          \State simdCopy(ref:val, prevNewRef:val, (ref:val < key));
+          \State simdCopy(ref:val, newRef:val, (ref:val > key));
+          \State prevNewRef:next = [newRef,[0,0,0]];
+          \State minIndex    = min(simdIndex(newRef:val = {\it empty}));      
+          \State newRef:val[minIndex] = key;
+          \State
+          \Return prevNewRef;
         \EndIf
-        \State [nextRef, prevMark] = getUnmarkedRef(prevRef);
-        \If{(prevMark = 0)}
-          \State insertStatus = false;
-          \State minIndex := getMinEmptySlot(nextRef,nodePool);
-          \If{(minIndex = 0)} \Comment No empty slot.
-            \State insertStatus := insertNodeAndKey(key, prevRef,nextRef);
-          \ElsIf{(minIndex > 0)}
-            \State insertStatus := insertKey(key, minIndex, prevRef, nextRef);
-          \EndIf
-          \If{insertStatus = true}
-            \State
-            \Return true;
-          \EndIf
-        \EndIf
-      \EndWhile
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}
-  \caption{Find empty slot with minimum index}
-  \label{alg:minindex}
-  \begin{algorithmic}[1]
-    \Require
-      \Statex {\it nextRef} in which minumum index to empty slot is to be
-              found.
-    \Ensure
-      \Statex Returns {\it -1} if {\it nextRef} is deleted, {\it 0} if no
-              empty slot is found, or minimum index to empty slot.  
-    
-    \Function{getMinEmptySlot}{nextRef}
-      \State val := nextRef:V[lid];
-      \State indicator := (val = EMPTY\_SLOT)?lid:0;
-      \If {(simdALL(indicator = 0))}
-        \State minIndex := 0;
       \Else
-        \State minIndex := simdMIN(indicator);
-      \EndIf
-      \State [nnRef,nextMark] := getUnmarkedPtr(nextRef);
-      \If{(nextMark = 0)}
+        \State simdCopy(ref:val, newRef:val);
+        \State newRef:val[keyIndex] = {\it empty};
         \State
-        \Return minIndex;
-      \Else
-        \State
-        \Return -1;
+        \Return newRef;
       \EndIf  
+      \State
+      \Return {\it null};
     \EndFunction
   \end{algorithmic}
 \end{algorithm}
 
 \begin{algorithm}
-  \caption{Insert a node and a key}
-  \label{alg:insnodekey}
+  \caption{traverses the list from prev ref to next ref.}
+  \label{alg:traverse}
   \begin{algorithmic}[1]
-    \Require
-      \Statex {\it key} to be inserted.
-      \Statex {\it prefRef} and {\it nextRef} give window in which new node
-              and key are to be inserted.
-    \Ensure
-       \Statex Returns {\it true} if successful.
-    
-    \Function{insertNodeAndKey}{key, prevRef, nextRef}
-      \If{(lid = 1)} 
-        \State newNRef := newNode();
-        \State newNNRef := newNode();
-      \EndIf
-      \State simdBARRIER();
-      \State newNRef  := simdBROADCAST(newNRef,1);
-      \State newNNRef := simdBROADCAST(newNRef,1);      
-      
-      \State newNRef:next := [newNNRef,0];
-      \If{(nodePool[nextRef]:V[lid] < key)}
-        \State nodePool[newNRef]:V[lid] := nodePool[nextRef]:V[lid];
-        \State nodePool[newNNRef]:V[lid] := EMPTY\_SLOT;
-      \Else
-        \State nodePool[newNNRef]:V[lid] := nodePool[nextRef]:V[lid];
-        \State nodePool[newNPRef]:V[lid] := EMPTY\_SLOT;
-      \EndIf
-      \State minIndex := getMinEmptySlot(newNRef,nodePool);
-      \State nodePool[newNRef]:V[minIndex] := key;
-      \State nodePool[newNNPtr]:next := [nextRef,0];
-      \State status := CAS(nodePool[prevRef]:next,[nextRef,0],newNPtr);
-      \Return status;
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}
-  \caption{Insert a key in a node}
-  \label{alg:inskey}
-  \begin{algorithmic}[5]  
-    \Function{insertKey}{key, minIndex, nextRef\&, nodePool}
-      \If{lid = 1}
-        \State status := CAS(nodePool[nextRef]:V[minIndex],EMPTY\_SLOT,key);
-      \EndIf
-      \State simdWait();
-      \State status = simdBroadcast(status, 1);
-      \Return status;
-    \EndFunction
-  \end{algorithmic}
-\end{algorithm}
-
-\begin{algorithm}
-  \caption{Delete a key from the set}
-  \label{alg:delkey}
-  \begin{algorithmic}[5]  
-    \Function{remove}{key, nodePool}
-      \State doneFlag := false;
-      \While{(!doneFlag)}
-        \State findStatus := find(key, prevRef\&, nextRef\&, nodePool);
-        \If{(findStaus = false)}
-          \State
-          \Return false;
-        \EndIf
-        \State val   := nodePool[nextRef]:V[lid];
-        \If{(val = key)}
-          \State status := CAS(nodePool[nextRef]:V[lid],key,EMPTY\_SLOT);
-        \EndIf
-        \State simdWait();
-        \State status := simdBrodacast(status);
-        \If{(status = true)}
-          \State status := deleteNode(prevRef\&, nextRef\&, nodePool);
-          \Return status;
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{traverse}{prevRef, nextRef}
+      \State pRef = prevRef;
+      \State [nRef, pBits] = unpackRef(pRef:next);
+      \While{(pBits = [0,x,x])}
+        \If{(nRef $\not = $ nextRef)}
+          \State pRef = nRef;
+          \State [nRef, pBits] = unpackRef(pRef:next);
         \Else
           \State
-          \Return false;
+          \Return pRef;
+        \EndIf
+      \EndWhile
+      \State
+      \Return {\it null};
+    \EndFunction
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+  \caption{adds a key to the set.}
+  \label{alg:add}
+  \begin{algorithmic}[1]
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{add}{key}
+      \While{(true)}
+        \State status = FIND(key, prevRef nextRef,index);
+        \If{status = {\it window\_found}}
+          \State pRef = TRAVERSE(prevRef, nextRef);
+          \If{(pRef $\not =$ {\it null})}
+            \State cloneRef = CLONE(nextRef,key);
+            \State status = REPLACE(pRef,cloneRef);
+            \If{(status = {\it replaced})}
+              \State
+              \Return {\it true};
+            \EndIf
+          \EndIf
+        \Else
+          \State
+          \Return {\it false}
         \EndIf
       \EndWhile
     \EndFunction
@@ -441,29 +390,39 @@ We also have the following methods
 \end{algorithm}
 
 \begin{algorithm}
-  \caption{Delete a node}
-  \label{alg:delnode}
-  \begin{algorithmic}[5]  
-    \Function{deleteNode}{prevRef\&, nextRef\&, nodePool}
-         \State val := nodePool[nextRef]:V[lid];
-         \State status := simdAll(val,EMPTY\_SLOT);
-         \If{(status = true)}
-           \State [nnRef,nextMark] := getPtr(nextRef);
-           \State newMark := 1;
-           \If{(lid = 1)}
-              \State status := CAS(nodePool[nextRef]:next,[nnRef,nextMark],[nnRef,newMark]);
-              \If{(status = true)}
-                \State status = delMarkedNodes(prevRef,NodePool); 
-              \EndIf
-           \EndIf
-           \State simdWait();
-           \State status = simdBroadcast(status,1);
-           \State
-           \Return status;
-         \EndIf
+  \caption{removes a key from the set.}
+  \label{alg:remove}
+  \begin{algorithmic}[1]
+    %\Require
+    %    \Statex startRef:Reference to the starting node.
+    %\Ensure
+    %   \Statex cleans all the logically deleted nodes.
+    \Statex   
+    \Function{remove}{key}
+      \While{(true)}
+        \State status = FIND(key, prevRef nextRef,index);
+        \If{status = {\it key\_found}}
+          \State pRef = TRAVERSE(prevRef, nextRef);
+          \If{(pRef $\not =$ {\it null})}
+            \State cloneRef = CLONE(nextRef,key);
+            \State status = REPLACE(pRef,cloneRef);
+            \If{(status = {\it replaced})}
+              \State
+              \Return {\it true};
+            \EndIf
+          \EndIf
+        \Else
+          \State
+          \Return {\it false}
+        \EndIf
+      \EndWhile
     \EndFunction
   \end{algorithmic}
 \end{algorithm}
+
+
+%\section{Proof of Correctness}
+
 
 %\Bibliographystyle{ieeetr}
 %\include{references.bbl}
