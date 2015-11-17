@@ -25,8 +25,9 @@ typedef struct sLLNode
 
 typedef struct sMiscData
 {
-  cl_uint       uiReadIndex;
-  cl_uint       uiWriteIndex;
+  //cl_uint       uiReadIndex;
+  //cl_uint       uiWriteIndex;
+  cl_uint       uiPoolHead;
 } TMiscData;
 
 #else
@@ -50,8 +51,9 @@ typedef struct sLLNode
 
 typedef struct sMiscData
 {
-  uint       uiReadIndex;
-  uint       uiWriteIndex;
+  //uint       uiReadIndex;
+  //uint       uiWriteIndex;
+  uint         uiPoolHead;
 } TMiscData;
 
 #endif

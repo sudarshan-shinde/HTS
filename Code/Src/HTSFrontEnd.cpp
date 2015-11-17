@@ -100,11 +100,8 @@ UINT CFrontEnd::uiBuildOCLKernels()
       pNodePool[i].uiNext = 0;
     }
 
-  pMiscData->uiReadIndex  = OCL_HASH_TABLE_SIZE;
-  pMiscData->uiWriteIndex = OCL_HASH_TABLE_SIZE + 1;
-
-  cl_uint uiStartIndex = OCL_HASH_TABLE_SIZE + 2;
-  cl_uint uiEndIndex   = OCL_HASH_TABLE_SIZE + OCL_NODE_POOL_SIZE -1;  
+  cl_uint uiStartIndex = OCL_HASH_TABLE_SIZE + 1;
+  cl_uint uiEndIndex   = OCL_HASH_TABLE_SIZE + OCL_NODE_POOL_SIZE;
 
   for(cl_uint i = uiStartIndex; i < uiEndIndex; ++i)
     {
@@ -113,8 +110,9 @@ UINT CFrontEnd::uiBuildOCLKernels()
     }
   
   pNodePool[uiEndIndex].uiNext              = 0;
-  pNodePool[pMiscData->uiReadIndex].uiNext  = SET_MPTR(uiStartIndex,1);
-  pNodePool[pMiscData->uiWriteIndex].uiNext = SET_MPTR(uiEndIndex,1);  
+
+  pMiscData->uiPoolHead                     = OCL_HASH_TABLE_SIZE;
+  pNodePool[pMiscData->uiPoolHead].uiNext   = SET_MPTR(uiStartIndex,1);
 
   //create the program
   std::string sourceStr;
@@ -128,7 +126,6 @@ UINT CFrontEnd::uiBuildOCLKernels()
 					 sourceSize,
 					 NULL);
 
- 
   std::cout << "building program" << std::endl;
 
   const char* options = "-I. -cl-std=CL2.0";
@@ -263,7 +260,7 @@ cl_uint CFrontEnd::uiSubmitReq(TFid tFid, CRequest& cReq, TEvent& tEvent)
   cQReq.uiType   = cReq.uiType;  
   cQReq.uiKey    = cReq.uiKey;
   cQReq.uiFlags  = (tFid->pThreadRequest[uiReqId]).uiFlags;
-  cQReq.uiStatus = 0;
+  cQReq.uiStatus = cReq.uiStatus;
 
   /* DEBUG */
   std::cout << "submit:" << cQReq.uiKey << std::endl;

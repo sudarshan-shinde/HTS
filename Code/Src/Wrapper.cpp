@@ -46,7 +46,8 @@ int main()
   //submit some requests
   CRequest tReq;
   TEvent   tReqEvent;
-
+  cl_uint  uiLLNode, uiDBit;
+  
   tReq.uiType = HTS_REQ_TYPE_ADD; 
   tReq.uiKey  = 12;
 
@@ -67,24 +68,25 @@ int main()
   	}
 
     if(uiReqStatus == HTS_REQ_COMPLETED)
-      std::cout << "request is successful: " << uiStatus << std::endl;
+      {
+	uiLLNode = GET_PTR(uiStatus);
+	uiDBit   = GET_DBIT(uiStatus);
+	if (uiDBit)
+	  {
+	    std::cout << "ADD allocated node at: " << uiLLNode << std::endl;
+	  }
+      }
   }
 
-
-  tReq.uiType  = HTS_REQ_TYPE_FIND; 
-  tReq.uiKey   = 14;
-  tReq.uiFlags = 0;
+  tReq.uiType   = HTS_REQ_TYPE_REMOVE; 
+  tReq.uiKey    = 14;
+  tReq.uiStatus = uiLLNode;
   
   if(tFrontEnd.uiSubmitReq(tFid, tReq, tReqEvent) == HTS_OK)
   {
     cl_uint   uiStatus;
     cl_uint   uiReqStatus;
 
-    //std::cout << "waiting on:" << std::endl;
-    //std::cout << (long)(tFid) << ":";
-    //std::cout << tReqEvent << ":";
-    //std::cout << ((tFid->pThreadRequest[tReqEvent]).uiFlags) << std::endl;
-    
     uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
     while (uiReqStatus == HTS_NOT_OK)
   	{
@@ -92,7 +94,39 @@ int main()
   	}
 
     if(uiReqStatus == HTS_REQ_COMPLETED)
-      std::cout << "request is successful: " << uiStatus << std::endl;
+      {
+	uiLLNode = GET_PTR(uiStatus);
+	uiDBit   = GET_DBIT(uiStatus);
+	if(uiDBit)
+	  {
+	    std::cout << "REMOVE freed node at: " << uiLLNode << std::endl;
+	  }
+      }
+  }
+
+  tReq.uiType = HTS_REQ_TYPE_ADD; 
+  tReq.uiKey  = 14;
+
+  if(tFrontEnd.uiSubmitReq(tFid, tReq, tReqEvent) == HTS_OK)
+  {
+    cl_uint   uiStatus;
+    cl_uint   uiReqStatus;
+
+    uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+    while (uiReqStatus == HTS_NOT_OK)
+  	{
+  	  uiReqStatus = tFrontEnd.uiGetStatus(tFid,tReqEvent,&uiStatus);
+  	}
+
+    if(uiReqStatus == HTS_REQ_COMPLETED)
+      {
+	uiLLNode = GET_PTR(uiStatus);
+	uiDBit   = GET_DBIT(uiStatus);
+	if(uiDBit)
+	  {
+	    std::cout << "ADD allocated node at: " << uiLLNode << std::endl;
+	  }
+      }
   }
   
   tFrontEnd.uiDeRegister(tFid);
